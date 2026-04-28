@@ -484,7 +484,14 @@ export class EditorView {
       const preview = container.querySelector('#md-preview');
       if (!preview) return;
       const [marked, DOMPurify] = await Promise.all([getMarked(), getPurify()]);
-      preview.innerHTML = DOMPurify.sanitize(marked.parse(markdown));
+      const html = DOMPurify.sanitize(marked.parse(markdown));
+      const base = `https://raw.githubusercontent.com/${this.config.owner}/${this.config.repo}/${this.config.branch}`;
+      // Rewrite root-relative image src values to the raw GitHub URL so
+      // images resolve correctly when previewing on a different origin.
+      preview.innerHTML = html.replace(
+        /(<img\b[^>]*?\ssrc=)(["'])(\/.+?)\2/gi,
+        (_, tag, q, path) => `${tag}${q}${base}${path}${q}`,
+      );
     } catch { /* ignore */ }
   }
 }
