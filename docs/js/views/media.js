@@ -23,7 +23,7 @@ export class MediaView {
             </svg>
           </div>
           <p>Drop images here to upload</p>
-          <small>JPEG, PNG, WebP, GIF. Resized before upload.</small>
+          <small>JPEG, PNG, WebP, GIF.${this.config.maxImageWidth ? ` Default max width: ${this.config.maxImageWidth}px.` : ''}</small>
           <input type="file" id="file-input" multiple accept="image/*" style="display:none">
         </div>
 
@@ -106,7 +106,7 @@ export class MediaView {
             <label>Max width</label>
             <div class="resize-options">
               ${[800, 1200, 1400, 1920, 0].map(w =>
-                `<button class="resize-opt ${w === 1400 ? 'active' : ''}" data-w="${w}">${w === 0 ? 'Original' : `${w}px`}</button>`
+                `<button class="resize-opt ${w === (this.config.maxImageWidth ?? 1400) ? 'active' : ''}" data-w="${w}">${w === 0 ? 'Original' : `${w}px`}</button>`
               ).join('')}
             </div>
           </div>
@@ -128,7 +128,7 @@ export class MediaView {
 
     document.body.appendChild(modal);
 
-    let maxWidth = 1400;
+    let maxWidth = this.config.maxImageWidth ?? 1400;
 
     modal.querySelectorAll('.resize-opt').forEach(btn => {
       btn.addEventListener('click', () => {

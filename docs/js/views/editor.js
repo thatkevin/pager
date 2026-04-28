@@ -266,7 +266,8 @@ export class EditorView {
     this.#setStatus(container, 'Uploading image…', { spinner: true });
 
     try {
-      await this.client.uploadBinary(path, blob, `Upload pasted image: ${name}`);
+      const resized = await this.#resizeImage(blob);
+      await this.client.uploadBinary(path, resized, `Upload pasted image: ${name}`);
       const md          = `![${name}](/${path})`;
       textarea.value    = textarea.value.replace(placeholder, md);
       this.body         = textarea.value;
@@ -279,6 +280,21 @@ export class EditorView {
       this.#setStatus(container, 'Upload failed');
       this.toast(`Image upload failed: ${err.message}`, 'error');
     }
+  }
+
+  async #resizeImage(blob) {
+    const maxWidth = this.config.maxImageWidth;
+    if (!maxWidth || maxWidth <= 0) return blob;
+    const bitmap = await createImageBitmap(blob);
+    if (bitmap.width <= maxWidth) { bitmap.close(); return blob; }
+    const scale  = maxWidth / bitmap.width;
+    const w      = Math.round(bitmap.width  * scale);
+    const h      = Math.round(bitmap.height * scale);
+    const canvas = new OffscreenCanvas(w, h);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const type = blob.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    return canvas.convertToBlob({ type, quality: 0.85 });
   }
 
   // ── Actions monitor ────────────────────────────────────────────────────────

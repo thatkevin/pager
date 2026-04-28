@@ -120,7 +120,8 @@ function renderView(container, route, params) {
     case 'setup':
       view = new SetupView(state.client, CONFIG, {
         toast,
-        onDone: applyRepoConfig,
+        onDone:        applyRepoConfig,
+        initialValues: state.repoConfig ?? null,
       });
       break;
 

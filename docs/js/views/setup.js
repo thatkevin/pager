@@ -19,22 +19,24 @@ const MEDIA_CANDIDATES = [
 ];
 
 export class SetupView {
-  constructor(client, config, { toast, onDone }) {
-    this.client = client;
-    this.config = config;
-    this.toast  = toast;
-    this.onDone = onDone;
-    this.repos    = [];
-    this.selected = null;
-    this._el      = null;
+  constructor(client, config, { toast, onDone, initialValues = null }) {
+    this.client        = client;
+    this.config        = config;
+    this.toast         = toast;
+    this.onDone        = onDone;
+    this.initialValues = initialValues;
+    this.repos         = [];
+    this.selected      = null;
+    this._el           = null;
   }
 
   render() {
+    const iv = this.initialValues;
     return `
       <div class="setup-screen">
         <div class="setup-inner">
-          <div class="setup-title">Choose a repository</div>
-          <p class="setup-sub">Select the GitHub repo you want PAGER to manage.</p>
+          <div class="setup-title">${iv ? 'Repository settings' : 'Choose a repository'}</div>
+          <p class="setup-sub">${iv ? 'Edit settings for this repository.' : 'Select the GitHub repo you want PAGER to manage.'}</p>
 
           <div class="field">
             <label>Filter</label>
@@ -53,27 +55,32 @@ export class SetupView {
             </div>
           </details>
 
-          <div id="setup-config" class="setup-config" style="display:none">
+          <div id="setup-config" class="setup-config" style="${iv ? '' : 'display:none'}">
             <div class="setup-config-head">
-              <span class="setup-config-repo" id="setup-repo-name"></span>
+              <span class="setup-config-repo" id="setup-repo-name">${iv ? `${iv.owner}/${iv.repo}` : ''}</span>
               <span class="setup-detecting" id="setup-detecting" style="display:none">Detecting…</span>
             </div>
 
             <div class="field">
               <label>Branch</label>
-              <input type="text" id="setup-branch" autocomplete="off">
+              <input type="text" id="setup-branch" value="${iv?.branch ?? ''}" autocomplete="off">
             </div>
             <div class="field">
               <label>Posts folder</label>
-              <input type="text" id="setup-posts-path" autocomplete="off">
+              <input type="text" id="setup-posts-path" value="${iv?.postsPath ?? ''}" autocomplete="off">
             </div>
             <div class="field">
               <label>Media folder</label>
-              <input type="text" id="setup-media-path" autocomplete="off">
+              <input type="text" id="setup-media-path" value="${iv?.mediaPath ?? ''}" autocomplete="off">
             </div>
             <div class="field">
               <label>Layouts (comma-separated)</label>
-              <input type="text" id="setup-layouts" autocomplete="off">
+              <input type="text" id="setup-layouts" value="${iv?.layouts?.join(', ') ?? ''}" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>Max image width (px)</label>
+              <input type="number" id="setup-max-img-width" value="${iv?.maxImageWidth ?? ''}"
+                     placeholder="e.g. 1200 — leave blank to keep originals" min="100" max="8000">
             </div>
 
             <button class="btn btn-primary" id="setup-confirm-btn">Continue</button>
@@ -100,6 +107,12 @@ export class SetupView {
     });
 
     el.querySelector('#setup-confirm-btn').addEventListener('click', () => this._confirm());
+
+    // If editing existing config, mark it as selected without re-detecting
+    if (this.initialValues) {
+      const { owner, repo } = this.initialValues;
+      this.selected = { full_name: `${owner}/${repo}` };
+    }
   }
 
   async _loadRepos() {
@@ -169,23 +182,18 @@ export class SetupView {
     configPanel.style.display = 'block';
     this._el.querySelector('#setup-repo-name').textContent = fullName;
 
-    // Update active state in list
     this._el.querySelectorAll('.repo-item').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.name === fullName);
     });
 
-    // Show detecting state
     const detectingEl = this._el.querySelector('#setup-detecting');
     detectingEl.style.display = 'inline';
     this._el.querySelector('#setup-confirm-btn').disabled = true;
 
-    // Set branch immediately from what we know
     this._el.querySelector('#setup-branch').value = defaultBranch;
 
-    // Auto-detect repo config
     const [owner, repo] = fullName.split('/');
-    const branch        = defaultBranch;
-    const tempClient    = this.client.withRepo(owner, repo, branch);
+    const tempClient    = this.client.withRepo(owner, repo, defaultBranch);
 
     const probe = async path => {
       try { await tempClient.listDir(path); return true; } catch { return false; }
@@ -235,12 +243,14 @@ export class SetupView {
       this.toast('Select a repository first', 'error');
       return;
     }
-    const branch    = this._el.querySelector('#setup-branch').value.trim()     || 'main';
-    const postsPath = this._el.querySelector('#setup-posts-path').value.trim() || '_posts';
-    const mediaPath = this._el.querySelector('#setup-media-path').value.trim() || 'assets/images';
-    const layoutRaw = this._el.querySelector('#setup-layouts').value.trim();
-    const layouts   = layoutRaw ? layoutRaw.split(',').map(s => s.trim()).filter(Boolean) : ['post', 'page', 'default'];
+    const branch       = this._el.querySelector('#setup-branch').value.trim()     || 'main';
+    const postsPath    = this._el.querySelector('#setup-posts-path').value.trim() || '_posts';
+    const mediaPath    = this._el.querySelector('#setup-media-path').value.trim() || 'assets/images';
+    const layoutRaw    = this._el.querySelector('#setup-layouts').value.trim();
+    const layouts      = layoutRaw ? layoutRaw.split(',').map(s => s.trim()).filter(Boolean) : ['post', 'page', 'default'];
+    const maxImgRaw    = parseInt(this._el.querySelector('#setup-max-img-width').value, 10);
+    const maxImageWidth = maxImgRaw > 0 ? maxImgRaw : null;
     const [owner, repo] = this.selected.full_name.split('/');
-    this.onDone({ owner, repo, branch, postsPath, mediaPath, layouts });
+    this.onDone({ owner, repo, branch, postsPath, mediaPath, layouts, maxImageWidth });
   }
 }
