@@ -7,7 +7,7 @@ export const CONFIG = {
   pagesPath: 'pages',
   layouts:   ['post', 'slide', 'basic', 'default', 'category', 'home'],
   // GitHub App slug — the name shown in github.com/apps/{slug}.
-  githubAppSlug: '',
+  githubAppSlug: 'pager-cms',
   // URL of the pager-auth Cloudflare Worker.
   workerUrl: 'https://pager-auth.kevs.workers.dev',
 };
