@@ -8,6 +8,8 @@ let purifyPromise  = null;
 const getMarked = () => markedPromise  ??= import(MARKED_URL).then(m => m.marked);
 const getPurify = () => purifyPromise  ??= import(PURIFY_URL).then(m => m.default);
 
+const OPT_SIZES = [480, 720, 1200];
+
 export class EditorView {
   constructor(client, config, { path, draftId = null, toast, onBack, onMediaPick, fileType = null, isPage = false }) {
     this.client      = client;
@@ -28,6 +30,9 @@ export class EditorView {
   }
 
   #pollTimer = null;
+  // Blob URLs for images pasted/uploaded this session — used for immediate preview
+  #blobUrls  = new Map();
+  #textarea  = null;
 
   get #isHtmlFile() {
     return this.fileType === 'html' || (!!this.path && /\.html?$/i.test(this.path));
@@ -53,6 +58,7 @@ export class EditorView {
           </div>
           <div class="topbar-right">
             <span class="status" id="save-status"></span>
+            ${!this.#isHtmlFile ? `<button class="btn btn-ghost btn-sm" id="optimise-btn" disabled title="Upload responsive image variants for every image in this post">Optimise images</button>` : ''}
             <button class="btn btn-ghost btn-sm" id="draft-btn" disabled>Save draft</button>
             <button class="btn btn-primary" id="publish-btn" disabled>Publish ↑</button>
           </div>
@@ -160,8 +166,15 @@ export class EditorView {
       publishBtn.disabled = false;
 
       const textarea = container.querySelector('#md-editor');
+      this.#textarea = textarea;
       textarea.value = this.body;
       this.#refreshPreview(container, this.body);
+
+      const optimiseBtn = container.querySelector('#optimise-btn');
+      if (optimiseBtn) {
+        optimiseBtn.disabled = false;
+        optimiseBtn.addEventListener('click', () => this.#optimiseImages(container));
+      }
 
       let previewTimer;
       textarea.addEventListener('input', () => {
@@ -309,7 +322,6 @@ export class EditorView {
         e.preventDefault();
         const insertion = selected ? `[${selected}](${text})` : `[](${text})`;
         textarea.value  = textarea.value.slice(0, start) + insertion + textarea.value.slice(end);
-        // Position cursor: inside the brackets if no text, after the closing ) if text
         const cursor = selected ? start + insertion.length : start + 1;
         textarea.selectionStart = textarea.selectionEnd = cursor;
         this.body  = textarea.value;
@@ -346,8 +358,14 @@ export class EditorView {
     this.#setStatus(container, 'Uploading image…', { spinner: true });
 
     try {
-      const resized  = await this.#resizeImage(blob);
+      const resized = await this.#resizeImage(blob);
       await this.client.uploadBinary(path, resized, `Upload pasted image: ${name}`);
+
+      // Store a blob URL so the preview can show the image immediately without
+      // waiting for GitHub's CDN to propagate the upload
+      const objectUrl = URL.createObjectURL(resized);
+      this.#blobUrls.set(`/${path}`, objectUrl);
+
       const insertion = this.#isHtmlFile
         ? `<img src="/${path}" alt="${name}">`
         : `![${name}](/${path})`;
@@ -377,6 +395,121 @@ export class EditorView {
     bitmap.close();
     const type = blob.type === 'image/png' ? 'image/png' : 'image/jpeg';
     return canvas.convertToBlob({ type, quality: 0.85 });
+  }
+
+  // ── Optimise images ────────────────────────────────────────────────────────
+
+  async #optimiseImages(container) {
+    const optimiseBtn = container.querySelector('#optimise-btn');
+    const draftBtn    = container.querySelector('#draft-btn');
+    const publishBtn  = container.querySelector('#publish-btn');
+
+    optimiseBtn.disabled = true;
+    draftBtn.disabled    = true;
+    publishBtn.disabled  = true;
+    this.#setStatus(container, 'Optimising images…', { spinner: true });
+
+    // Match standard markdown images with absolute paths only
+    const imgRe = /!\[([^\]]*)\]\((\/[^)\s]+\.(?:jpe?g|png|webp))\)/gi;
+    const matches = [...this.body.matchAll(imgRe)]
+      .filter(([, , src]) => !/-\d+w\.(?:jpe?g|png|gif|webp)$/i.test(src));
+
+    if (!matches.length) {
+      this.toast('No images to optimise — all images may already be small or use responsive variants.', 'info');
+      this.#setStatus(container, '');
+      optimiseBtn.disabled = false;
+      draftBtn.disabled    = false;
+      publishBtn.disabled  = false;
+      return;
+    }
+
+    let content = this.body;
+    let count   = 0;
+    const seen  = new Set();
+
+    for (const [full, alt, src] of matches) {
+      if (seen.has(src)) continue;
+      seen.add(src);
+
+      const filePath = src.replace(/^\//, '');
+      const rawUrl   = `https://raw.githubusercontent.com/${this.config.owner}/${this.config.repo}/${this.config.branch}/${filePath}`;
+
+      try {
+        this.#setStatus(container, `Fetching ${filePath.split('/').pop()}…`, { spinner: true });
+        const resp = await fetch(rawUrl);
+        if (!resp.ok) { this.toast(`Could not fetch ${src}`, 'error'); continue; }
+        const blob = await resp.blob();
+
+        const probe  = await createImageBitmap(blob);
+        const origW  = probe.width;
+        probe.close();
+
+        if (origW <= OPT_SIZES[0]) {
+          this.toast(`${src.split('/').pop()} is already ${origW}px wide — skipping.`, 'info');
+          continue;
+        }
+
+        // Build list of widths to generate (only smaller than original)
+        const sizes = OPT_SIZES.filter(w => w < origW);
+        // Cap at original if original is smaller than the largest breakpoint
+        sizes.push(Math.min(origW, OPT_SIZES[OPT_SIZES.length - 1]));
+        const uniqueSizes = [...new Set(sizes)].sort((a, b) => a - b);
+
+        const basePath = filePath.replace(/\.[^.]+$/, '');
+        const ext      = blob.type === 'image/png' ? 'png' : 'jpg';
+        const mimeType = blob.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const srcsetParts = [];
+
+        for (const w of uniqueSizes) {
+          const bm     = await createImageBitmap(blob);
+          const h      = Math.round(bm.height * (w / bm.width));
+          const canvas = new OffscreenCanvas(w, h);
+          canvas.getContext('2d').drawImage(bm, 0, 0, w, h);
+          bm.close();
+          const resized     = await canvas.convertToBlob({ type: mimeType, quality: 0.85 });
+          const resizedPath = `${basePath}-${w}w.${ext}`;
+
+          // Fetch existing SHA so we can update rather than fail on duplicate
+          let sha = null;
+          try { sha = (await this.client.getFile(resizedPath)).sha; } catch {}
+          await this.client.uploadBinary(resizedPath, resized, `Optimise: ${w}w variant of ${filePath.split('/').pop()}`, sha);
+
+          // Store blob URL for immediate preview
+          const objectUrl = URL.createObjectURL(resized);
+          this.#blobUrls.set(`/${resizedPath}`, objectUrl);
+          srcsetParts.push({ w, path: `/${resizedPath}` });
+        }
+
+        const srcset    = srcsetParts.map(({ w, path }) => `${path} ${w}w`).join(', ');
+        const largestSrc = srcsetParts.at(-1).path;
+        const picture   = [
+          '<picture>',
+          `  <source srcset="${srcset}" sizes="100vw">`,
+          `  <img src="${largestSrc}" alt="${alt}">`,
+          '</picture>',
+        ].join('\n');
+
+        content = content.split(full).join(picture);
+        count++;
+      } catch (e) {
+        this.toast(`Skipped ${src.split('/').pop()}: ${e.message}`, 'error');
+      }
+    }
+
+    if (count > 0) {
+      this.body          = content;
+      this.#textarea.value = content;
+      this.dirty         = true;
+      this.#refreshPreview(container, content);
+      this.#setStatus(container, `${count} image${count !== 1 ? 's' : ''} optimised`);
+      this.toast(`Optimised ${count} image${count !== 1 ? 's' : ''}. Review then publish.`, 'success');
+    } else {
+      this.#setStatus(container, '');
+    }
+
+    optimiseBtn.disabled = false;
+    draftBtn.disabled    = false;
+    publishBtn.disabled  = false;
   }
 
   // ── Actions monitor ────────────────────────────────────────────────────────
@@ -615,7 +748,13 @@ export class EditorView {
       const base = `https://raw.githubusercontent.com/${this.config.owner}/${this.config.repo}/${this.config.branch}`;
       preview.innerHTML = html.replace(
         /(<img\b[^>]*?\ssrc=)(["'])(\/.+?)\2/gi,
-        (_, tag, q, path) => `${tag}${q}${base}${path}${q}`,
+        (_, tag, q, path) => {
+          // Use local blob URL if available (e.g. freshly pasted/optimised image not yet on CDN)
+          const blobUrl = this.#blobUrls.get(path);
+          return blobUrl
+            ? `${tag}${q}${blobUrl}${q}`
+            : `${tag}${q}${base}${path}${q}`;
+        },
       );
     } catch { /* ignore */ }
   }
