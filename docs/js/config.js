@@ -7,7 +7,7 @@ export const CONFIG = {
   pagesPath: 'pages',
   layouts:   ['post', 'slide', 'basic', 'default', 'category', 'home'],
   // GitHub App client ID — fill in after creating the GitHub App.
-  githubClientId: '',
+  githubClientId: 'Ov23likIP5P2MhK4fp59',
   // URL of the pager-auth Cloudflare Worker.
   workerUrl: 'https://pager-auth.kevs.workers.dev',
 };
