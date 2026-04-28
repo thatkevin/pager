@@ -273,18 +273,75 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.sidebar-footer .repo {
+.sidebar-footer .user-repo-label {
   font-size: 10.5px;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: var(--mono);
 }
 
 .sidebar-footer .sign-out {
   padding: 4px 6px;
   font-size: 11px;
   flex-shrink: 0;
+}
+
+/* ── Media Search and Tags ─────────────────────────────── */
+.media-header-actions {
+  display: flex;
+  gap: 12px;
+  margin: 0 28px 12px;
+  flex-shrink: 0;
+}
+
+.media-search-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.media-search-input {
+  padding-left: 32px !important;
+}
+
+.media-search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.media-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 28px 20px;
+  flex-shrink: 0;
+}
+
+.media-tag-filter {
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+
+.media-tag-filter:hover {
+  border-color: #444;
+  color: var(--text);
+}
+
+.media-tag-filter.active {
+  background: var(--surface-3);
+  border-color: var(--text-dim);
+  color: var(--text);
 }
 
 /* ── Main content ──────────────────────────────────────── */
@@ -620,6 +677,31 @@ select {
 }
 
 .status-link:hover { color: var(--text); }
+
+.fm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: all var(--transition);
+}
+
+.fm-toggle:hover {
+  color: var(--text);
+  border-color: #3a3a3a;
+  background: var(--surface-2);
+}
+
+.fm-toggle input {
+  width: auto;
+  margin: 0;
+}
 
 .editor-meta {
   padding: 16px 28px;

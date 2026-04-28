@@ -26,6 +26,7 @@ export class EditorView {
     this.body        = '';
     this.dirty       = false;
     this.tags        = [];
+    this.useFrontmatter = true;
     this.#pollTimer  = null;
   }
 
@@ -58,6 +59,12 @@ export class EditorView {
           </div>
           <div class="topbar-right">
             <span class="status" id="save-status"></span>
+            ${this.#isHtmlFile ? `
+              <label class="fm-toggle" title="Include Jekyll front matter (--- block)">
+                <input type="checkbox" id="fm-toggle-checkbox" checked>
+                Front matter
+              </label>
+            ` : ''}
             ${!this.#isHtmlFile ? `<button class="btn btn-ghost btn-sm" id="optimise-btn" disabled title="Upload responsive image variants for every image in this post">Optimise images</button>` : ''}
             <button class="btn btn-ghost btn-sm" id="draft-btn" disabled>Save draft</button>
             <button class="btn btn-primary" id="publish-btn" disabled>Publish ↑</button>
@@ -130,6 +137,7 @@ export class EditorView {
         }
         this.fm   = draft.fm;
         this.body = draft.body;
+        this.useFrontmatter = draft.useFrontmatter ?? true;
         this.tags = Array.isArray(draft.fm.categories) ? [...draft.fm.categories] : [];
         const t   = new Date(draft.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         status.textContent = `Draft · saved ${t}`;
@@ -145,12 +153,14 @@ export class EditorView {
         this.sha  = file.sha;
         this.fm   = parsed.frontmatter;
         this.body = parsed.body;
+        this.useFrontmatter = parsed.hasFrontmatter;
         this.tags = Array.isArray(this.fm.categories) ? [...this.fm.categories] : [];
         container.querySelector('#filename-label').textContent = this.path.split('/').pop();
 
       } else if (this.#isHtmlFile) {
         this.fm   = { title: '', layout: 'page', description: '', permalink: '' };
-        this.body = '---\n<!-- page content here -->\n';
+        this.body = '<!-- page content here -->\n';
+        this.useFrontmatter = false;
         container.querySelector('#filename-label').textContent = 'new page';
       } else {
         this.fm   = { title: '', date: new Date().toISOString(), layout: 'post',
@@ -162,6 +172,19 @@ export class EditorView {
 
       meta.innerHTML = this.#metaFormHtml();
       this.#bindMeta(container);
+
+      const fmToggle = container.querySelector('#fm-toggle-checkbox');
+      if (fmToggle) {
+        fmToggle.checked = this.useFrontmatter;
+        meta.style.display = this.useFrontmatter ? 'grid' : 'none';
+        fmToggle.addEventListener('change', () => {
+          this.useFrontmatter = fmToggle.checked;
+          this.dirty = true;
+          meta.style.display = this.useFrontmatter ? 'grid' : 'none';
+          this.#setStatus(container, 'Unsaved changes');
+        });
+      }
+
       draftBtn.disabled   = false;
       publishBtn.disabled = false;
 
@@ -212,6 +235,7 @@ export class EditorView {
   // ── Form helpers ───────────────────────────────────────────────────────────
 
   #collectFm(container) {
+    if (!this.useFrontmatter) return null;
     if (this.#isHtmlFile || this.isPage) {
       return {
         title:       container.querySelector('#fm-title')?.value       || this.fm.title,
@@ -247,8 +271,8 @@ export class EditorView {
 
   #saveDraft(container) {
     const fm = this.#collectFm(container);
-    saveDraft(this.draftId, { fm, body: this.body, path: this.path });
-    this.fm    = fm;
+    saveDraft(this.draftId, { fm, body: this.body, path: this.path, useFrontmatter: this.useFrontmatter });
+    this.fm    = fm || {};
     this.dirty = false;
     const t    = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     this.#setStatus(container, `Draft · saved ${t}`);
@@ -286,14 +310,14 @@ export class EditorView {
 
       const kind    = this.isPage || this.#isHtmlFile ? 'page' : 'post';
       const message = this.path
-        ? `Update ${kind}: ${fm.title || filename}`
-        : `Add ${kind}: ${fm.title || filename}`;
+        ? `Update ${kind}: ${fm?.title || filename}`
+        : `Add ${kind}: ${fm?.title || filename}`;
 
       const content = buildPostContent(fm, this.body);
       const res     = await this.client.writeFile(filePath, content, message, this.sha);
       this.sha   = res.content.sha;
       this.path  = filePath;
-      this.fm    = fm;
+      this.fm    = fm || {};
       this.dirty = false;
 
       deleteDraft(this.draftId);

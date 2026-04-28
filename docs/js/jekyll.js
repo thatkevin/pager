@@ -1,6 +1,6 @@
 export function parseFrontmatter(raw) {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return { frontmatter: {}, body: raw };
+  if (!match) return { frontmatter: {}, body: raw, hasFrontmatter: false };
 
   const fm = {};
   for (const line of match[1].split('\n')) {
@@ -24,10 +24,11 @@ export function parseFrontmatter(raw) {
     fm[key] = val;
   }
 
-  return { frontmatter: fm, body: match[2] };
+  return { frontmatter: fm, body: match[2], hasFrontmatter: true };
 }
 
 export function stringifyFrontmatter(fm) {
+  if (!fm) return '';
   const lines = ['---'];
   for (const [k, v] of Object.entries(fm)) {
     if (v === undefined || v === null || v === '') continue;
@@ -45,6 +46,7 @@ export function stringifyFrontmatter(fm) {
 }
 
 export function buildPostContent(fm, body) {
+  if (!fm) return body;
   return stringifyFrontmatter(fm) + body;
 }
 
