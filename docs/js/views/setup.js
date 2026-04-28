@@ -113,7 +113,8 @@ export class SetupView {
             </div>
             <div class="field">
               <label>Posts folder</label>
-              <input type="text" id="setup-posts-path" value="${iv?.postsPath ?? ''}" autocomplete="off">
+              <input type="text" id="setup-posts-path" value="${iv?.postsPath ?? ''}"
+                     placeholder="e.g. _posts — leave blank if posts are in the repo root" autocomplete="off">
             </div>
             <div class="field">
               <label>Pages folder <span class="field-hint">(HTML &amp; standalone pages)</span></label>
@@ -302,7 +303,7 @@ export class SetupView {
       return;
     }
     const branch        = this._el.querySelector('#setup-branch').value.trim()      || 'main';
-    const postsPath     = this._el.querySelector('#setup-posts-path').value.trim()  || '_posts';
+    const postsPath     = this._el.querySelector('#setup-posts-path').value.trim();
     const pagesPath     = this._el.querySelector('#setup-pages-path').value.trim();
     const mediaPath     = this._el.querySelector('#setup-media-path').value.trim()  || 'assets/images';
     const layoutRaw     = this._el.querySelector('#setup-layouts').value.trim();

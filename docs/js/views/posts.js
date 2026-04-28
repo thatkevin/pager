@@ -2,14 +2,15 @@ import { filenameToMeta } from '../jekyll.js';
 import { listDrafts, deleteDraft, draftsByPath } from '../drafts.js';
 
 export class PostsView {
-  constructor(client, config, { onEdit, onNew, onDraft, toast, onSetup }) {
-    this.client  = client;
-    this.config  = config;
-    this.onEdit  = onEdit;
-    this.onNew   = onNew;
-    this.onDraft = onDraft;
-    this.toast   = toast;
-    this.onSetup = onSetup;
+  constructor(client, config, { onEdit, onNew, onDraft, toast, onSetup, onUsePath }) {
+    this.client    = client;
+    this.config    = config;
+    this.onEdit    = onEdit;
+    this.onNew     = onNew;
+    this.onDraft   = onDraft;
+    this.toast     = toast;
+    this.onSetup   = onSetup;
+    this.onUsePath = onUsePath;
   }
 
   render() {
@@ -117,12 +118,12 @@ export class PostsView {
       const hint = document.createElement('p');
       hint.style.cssText = 'margin:8px 0 0; font-size:13px; color:var(--text-muted)';
       if (suggestion !== null) {
-        hint.innerHTML = `Found content in <code>${suggestion}</code> — <button class="btn-inline" id="posts-fix-btn">open settings to update</button>`;
+        const display = suggestion === '' ? '(repo root)' : suggestion;
+        hint.innerHTML = `Found content in <code>${display}</code> — <button class="btn-inline" id="posts-fix-btn">use this folder</button>`;
         loadingEl.appendChild(hint);
-        hint.querySelector('#posts-fix-btn').addEventListener('click', () => this.onSetup?.());
+        hint.querySelector('#posts-fix-btn').addEventListener('click', () => this.onUsePath?.(suggestion));
       } else {
         hint.textContent = 'Check your posts folder setting in Setup.';
-        hint.querySelector && loadingEl.appendChild(hint);
         loadingEl.appendChild(hint);
       }
     }
@@ -135,7 +136,7 @@ export class PostsView {
       try {
         const files = await this.client.listDir(path);
         const found = files.some(f => f.type === 'file' && /\.(md|html?)$/i.test(f.name));
-        if (found) return path === '' ? '(repo root)' : path;
+        if (found) return path;
       } catch { /* keep looking */ }
     }
     return null;

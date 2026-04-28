@@ -129,10 +129,11 @@ function renderView(container, route, params) {
     case 'posts':
       view = new PostsView(state.client, cfg, {
         toast,
-        onEdit:  path    => navigate('editor', { path }),
-        onNew:   ()      => navigate('editor', { path: null }),
-        onDraft: draftId => navigate('editor', { path: null, draftId }),
-        onSetup: ()      => navigate('setup'),
+        onEdit:    path    => navigate('editor', { path }),
+        onNew:     ()      => navigate('editor', { path: null }),
+        onDraft:   draftId => navigate('editor', { path: null, draftId }),
+        onSetup:   ()      => navigate('setup'),
+        onUsePath: path    => applyRepoConfig({ ...state.repoConfig, postsPath: path }),
       });
       break;
 
