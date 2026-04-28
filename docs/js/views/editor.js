@@ -296,9 +296,30 @@ export class EditorView {
     }
   }
 
-  // ── Paste image ────────────────────────────────────────────────────────────
+  // ── Paste image / URL ──────────────────────────────────────────────────────
 
   async #handlePaste(e, textarea, container) {
+    // URL paste — wrap selected text as markdown link (markdown only)
+    if (!this.#isHtmlFile) {
+      const text = e.clipboardData?.getData('text/plain')?.trim() ?? '';
+      if (/^https?:\/\/\S+$/.test(text)) {
+        const start    = textarea.selectionStart;
+        const end      = textarea.selectionEnd;
+        const selected = textarea.value.slice(start, end);
+        e.preventDefault();
+        const insertion = selected ? `[${selected}](${text})` : `[](${text})`;
+        textarea.value  = textarea.value.slice(0, start) + insertion + textarea.value.slice(end);
+        // Position cursor: inside the brackets if no text, after the closing ) if text
+        const cursor = selected ? start + insertion.length : start + 1;
+        textarea.selectionStart = textarea.selectionEnd = cursor;
+        this.body  = textarea.value;
+        this.dirty = true;
+        this.#setStatus(container, 'Unsaved changes');
+        this.#updatePreview(container, this.body);
+        return;
+      }
+    }
+
     const imageItem = Array.from(e.clipboardData?.items ?? [])
       .find(item => item.type.startsWith('image/'));
     if (!imageItem) return;
