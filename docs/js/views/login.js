@@ -149,7 +149,8 @@ export class LoginView {
       githubBtn.addEventListener('click', () => {
         const state = crypto.randomUUID();
         sessionStorage.setItem('pager_oauth_state', state);
-        const url = new URL(`https://github.com/apps/${this.githubAppSlug}/installations/new`);
+        const url = new URL('https://github.com/login/oauth/authorize');
+        url.searchParams.set('client_id', this.githubClientId);
         url.searchParams.set('state', state);
         location.href = url.toString();
       });
