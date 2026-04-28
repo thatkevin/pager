@@ -34,14 +34,14 @@ const GUIDE_HTML = `
 `;
 
 export class LoginView {
-  constructor(onAuth, workerUrl = '', githubAppSlug = '') {
-    this.onAuth       = onAuth;
-    this.workerUrl    = workerUrl;
-    this.githubAppSlug = githubAppSlug;
+  constructor(onAuth, workerUrl = '', githubClientId = '') {
+    this.onAuth        = onAuth;
+    this.workerUrl     = workerUrl;
+    this.githubClientId = githubClientId;
   }
 
   render() {
-    const hasOAuth = Boolean(this.workerUrl && this.githubAppSlug);
+    const hasOAuth = Boolean(this.workerUrl && this.githubClientId);
     return `
       <div class="login-screen">
         <div class="login-panel">
@@ -148,7 +148,9 @@ export class LoginView {
       githubBtn.addEventListener('click', () => {
         const state = crypto.randomUUID();
         sessionStorage.setItem('pager_oauth_state', state);
-        const url = new URL(`https://github.com/apps/${this.githubAppSlug}/installations/new`);
+        const url = new URL('https://github.com/login/oauth/authorize');
+        url.searchParams.set('client_id', this.githubClientId);
+        url.searchParams.set('redirect_uri', `${location.origin}/callback.html`);
         url.searchParams.set('state', state);
         location.href = url.toString();
       });
