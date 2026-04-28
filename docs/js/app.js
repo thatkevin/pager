@@ -221,7 +221,7 @@ function renderShell() {
 
 function renderLogin() {
   const app  = document.getElementById('app');
-  const view = new LoginView(authenticate, CONFIG.workerUrl, CONFIG.githubClientId);
+  const view = new LoginView(authenticate, CONFIG.workerUrl, CONFIG.githubAppSlug);
   app.innerHTML = view.render();
   view.bind(app);
 }
