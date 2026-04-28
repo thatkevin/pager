@@ -1501,6 +1501,10 @@ input[type="range"]::-webkit-slider-thumb {
   gap: 14px;
 }
 
+.setup-config > .btn-primary {
+  margin-top: 10px;
+}
+
 .setup-config-head {
   display: flex;
   align-items: center;
