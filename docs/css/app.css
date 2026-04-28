@@ -1255,7 +1255,7 @@ input[type="range"]::-webkit-slider-thumb {
 
   .sidebar { display: none; }
 
-  .main { padding-bottom: 56px; }
+  .main { padding-bottom: 72px; }
 
   /* Bottom nav */
   .mobile-nav {
@@ -1264,7 +1264,7 @@ input[type="range"]::-webkit-slider-thumb {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 56px;
+    height: 72px;
     background: var(--surface);
     border-top: 1px solid var(--border-light);
     z-index: 50;
