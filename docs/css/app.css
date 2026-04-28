@@ -459,6 +459,13 @@ select {
 
 .login-hint a:hover { color: var(--text); }
 
+.login-reset-hint {
+  margin-top: 28px;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
 .login-error {
   padding: 10px 14px;
   background: var(--red-dim);

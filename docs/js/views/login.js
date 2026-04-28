@@ -83,6 +83,10 @@ export class LoginView {
             </p>
           ` : ''}
 
+          <p class="login-reset-hint" id="reset-hint" style="display:none">
+            Stuck? <button class="btn-inline" id="persistent-reset-btn">Clear saved session data</button>
+          </p>
+
         </div>
       </div>
 
@@ -168,5 +172,13 @@ export class LoginView {
     }
 
     if (!this.workerUrl) input?.focus();
+
+    // Always-visible reset link so stuck users can clear state
+    if (this.onReset) {
+      const resetHint = container.querySelector('#reset-hint');
+      const persistentReset = container.querySelector('#persistent-reset-btn');
+      if (resetHint) resetHint.style.display = '';
+      persistentReset?.addEventListener('click', () => this.onReset());
+    }
   }
 }
