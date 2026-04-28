@@ -4,14 +4,17 @@ import { LoginView }    from './views/login.js';
 import { PostsView }    from './views/posts.js';
 import { EditorView }   from './views/editor.js';
 import { MediaView }    from './views/media.js';
+import { SetupView }    from './views/setup.js';
 
 // ── State ───────────────────────────────────────────────────────────────────
 
 const state = {
-  client:  null,
-  user:    null,
-  route:   null,
-  params:  {},
+  token:      null,
+  client:     null,
+  user:       null,
+  route:      null,
+  params:     {},
+  repoConfig: null,
 };
 
 // ── Toast ────────────────────────────────────────────────────────────────────
@@ -31,30 +34,73 @@ function toast(message, type = 'info') {
   setTimeout(() => el.remove(), 3500);
 }
 
+// ── Repo config ──────────────────────────────────────────────────────────────
+
+const TOKEN_KEY       = 'cms_gh_token';
+const REPO_CONFIG_KEY = 'cms_repo_config';
+
+function loadRepoConfig() {
+  try {
+    const raw = localStorage.getItem(REPO_CONFIG_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function applyRepoConfig(cfg) {
+  state.repoConfig = cfg;
+  localStorage.setItem(REPO_CONFIG_KEY, JSON.stringify(cfg));
+  state.client = new GitHubClient(state.token, cfg.owner, cfg.repo, cfg.branch);
+  // Update the repo label in the shell without a full re-render
+  const repoEl = document.querySelector('.user-repo');
+  if (repoEl) repoEl.textContent = `${cfg.owner}/${cfg.repo}`;
+  navigate('posts');
+}
+
+function getViewConfig() {
+  return { ...CONFIG, ...(state.repoConfig ?? {}) };
+}
+
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
-const TOKEN_KEY = 'cms_gh_token';
-
 async function authenticate(token) {
-  const client = new GitHubClient(token, CONFIG.owner, CONFIG.repo, CONFIG.branch);
-  const user   = await client.getUser();
-  state.client = client;
+  const tempClient = new GitHubClient(token, '', '', '');
+  const user       = await tempClient.getUser();
+  state.token  = token;
   state.user   = user;
   localStorage.setItem(TOKEN_KEY, token);
-  renderShell();
-  navigate('posts');
+
+  const saved = loadRepoConfig();
+  if (saved) {
+    state.repoConfig = saved;
+    state.client = new GitHubClient(token, saved.owner, saved.repo, saved.branch);
+    renderShell();
+    navigate('posts');
+  } else {
+    state.client = tempClient;
+    renderShell();
+    navigate('setup');
+  }
 }
 
 function signOut() {
   localStorage.removeItem(TOKEN_KEY);
-  state.client = null;
-  state.user   = null;
+  localStorage.removeItem(REPO_CONFIG_KEY);
+  state.token      = null;
+  state.client     = null;
+  state.user       = null;
+  state.repoConfig = null;
   renderLogin();
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
 function navigate(route, params = {}) {
+  // Guard: require repo config for content routes
+  if (route !== 'setup' && !state.repoConfig) {
+    route  = 'setup';
+    params = {};
+  }
+
   state.route  = route;
   state.params = params;
 
@@ -67,11 +113,19 @@ function navigate(route, params = {}) {
 }
 
 function renderView(container, route, params) {
+  const cfg = getViewConfig();
   let view;
 
   switch (route) {
+    case 'setup':
+      view = new SetupView(state.client, CONFIG, {
+        toast,
+        onDone: applyRepoConfig,
+      });
+      break;
+
     case 'posts':
-      view = new PostsView(state.client, CONFIG, {
+      view = new PostsView(state.client, cfg, {
         toast,
         onEdit:  path    => navigate('editor', { path }),
         onNew:   ()      => navigate('editor', { path: null }),
@@ -80,7 +134,7 @@ function renderView(container, route, params) {
       break;
 
     case 'editor':
-      view = new EditorView(state.client, CONFIG, {
+      view = new EditorView(state.client, cfg, {
         toast,
         path:    params.path    ?? null,
         draftId: params.draftId ?? null,
@@ -90,7 +144,7 @@ function renderView(container, route, params) {
       break;
 
     case 'media':
-      view = new MediaView(state.client, CONFIG, { toast });
+      view = new MediaView(state.client, cfg, { toast });
       break;
 
     default:
@@ -125,7 +179,7 @@ function showMediaPicker(callback) {
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
 
-  const view = new MediaView(state.client, CONFIG, {
+  const view = new MediaView(state.client, getViewConfig(), {
     toast,
     pickMode: true,
     onPick: (path) => {
@@ -148,6 +202,9 @@ function renderShell() {
   const { user } = state;
   const app = document.getElementById('app');
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const repoLabel = state.repoConfig
+    ? `${esc(state.repoConfig.owner)}/${esc(state.repoConfig.repo)}`
+    : 'No repo configured';
 
   app.innerHTML = `
     <div class="shell">
@@ -183,7 +240,7 @@ function renderShell() {
           </div>
           <div class="user-info">
             <div class="username">${esc(user.login)}</div>
-            <div class="repo">${esc(CONFIG.owner)}/${esc(CONFIG.repo)}</div>
+            <button class="user-repo btn-inline" data-route="setup" title="Change repository">${repoLabel}</button>
           </div>
           <button class="btn btn-ghost btn-sm sign-out" id="sign-out-btn" title="Sign out">↩</button>
         </div>
@@ -208,7 +265,7 @@ function renderShell() {
 
   document.getElementById('sign-out-btn').addEventListener('click', signOut);
 
-  document.querySelectorAll('.nav-item[data-route], .mobile-nav-item[data-route]').forEach(el => {
+  document.querySelectorAll('.nav-item[data-route], .mobile-nav-item[data-route], .user-repo[data-route]').forEach(el => {
     el.addEventListener('click', () => {
       const route = el.dataset.route;
       const isNew = el.dataset.new === '1';
@@ -230,14 +287,26 @@ function renderLogin() {
 
 async function boot() {
   const stored = localStorage.getItem(TOKEN_KEY);
+
   if (stored) {
+    // OAuth App tokens (gho_) won't work with the GitHub App flow — clear them.
+    if (stored.startsWith('gho_')) {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REPO_CONFIG_KEY);
+      renderLogin();
+      toast('Please log in again — the auth flow has been updated.', 'info');
+      return;
+    }
+
     try {
       await authenticate(stored);
       return;
     } catch {
       localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REPO_CONFIG_KEY);
     }
   }
+
   renderLogin();
 }
 

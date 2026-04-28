@@ -12,7 +12,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { GitHubClient } from '../docs/js/github.js';
-import { CONFIG } from '../docs/js/config.js';
 
 const TOKEN    = process.env.GITHUB_TOKEN;
 const TIMEOUT  = 15_000;
@@ -23,7 +22,10 @@ describe.skipIf(!TOKEN)('GitHubClient — real GitHub API', () => {
   let fileSha = null;   // tracked so afterAll can clean up even after a mid-run failure
 
   beforeAll(() => {
-    client   = new GitHubClient(TOKEN, CONFIG.owner, CONFIG.repo, CONFIG.branch);
+    const owner  = process.env.GITHUB_OWNER  ?? 'thatkevin';
+    const repo   = process.env.GITHUB_REPO   ?? 'thatkevin.github.io';
+    const branch = process.env.GITHUB_BRANCH ?? 'master';
+    client   = new GitHubClient(TOKEN, owner, repo, branch);
     testPath = `cms/test-scratch/integration-${Date.now()}.md`;
   });
 
@@ -80,8 +82,8 @@ describe.skipIf(!TOKEN)('GitHubClient — real GitHub API', () => {
   it('rawUrl returns a URL that matches the expected pattern', () => {
     const url = client.rawUrl(testPath);
     expect(url).toMatch(/^https:\/\/raw\.githubusercontent\.com\//);
-    expect(url).toContain(CONFIG.owner);
-    expect(url).toContain(CONFIG.repo);
+    expect(url).toContain(process.env.GITHUB_OWNER ?? 'thatkevin');
+    expect(url).toContain(process.env.GITHUB_REPO  ?? 'thatkevin.github.io');
     expect(url).toContain(testPath);
   });
 

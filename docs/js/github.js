@@ -105,4 +105,25 @@ export class GitHubClient {
   rawUrl(path) {
     return `https://raw.githubusercontent.com/${this.#owner}/${this.#repo}/${this.#branch}/${path}`;
   }
+
+  withRepo(owner, repo, branch) {
+    return new GitHubClient(this.#token, owner, repo, branch);
+  }
+
+  async listInstallationRepos() {
+    const installs = await this.#req('/user/installations?per_page=100');
+    const results = [];
+    for (const inst of installs.installations ?? []) {
+      try {
+        const r = await this.#req(`/user/installations/${inst.id}/repositories?per_page=100`);
+        results.push(...(r.repositories ?? []));
+      } catch {}
+    }
+    return results;
+  }
+
+  async listUserRepos() {
+    const data = await this.#req('/user/repos?sort=updated&per_page=100&affiliation=owner,collaborator');
+    return Array.isArray(data) ? data : [];
+  }
 }

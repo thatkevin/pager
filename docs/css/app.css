@@ -1356,3 +1356,150 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--text-muted);
   letter-spacing: 0.08em;
 }
+
+/* ── Setup / repo picker ──────────────────────────────────────────────────── */
+
+.setup-screen {
+  height: 100%;
+  overflow-y: auto;
+  padding: 32px 24px 48px;
+}
+
+.setup-inner {
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.setup-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.setup-sub {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.repo-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.repo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 14px;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  border-radius: 0;
+  text-align: left;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.repo-item:last-child { border-bottom: none; }
+
+.repo-item:hover { background: var(--surface-2); color: var(--text); }
+
+.repo-item.active { background: var(--surface-3); color: var(--text); }
+
+.repo-item-name { font-family: var(--mono); font-size: 12px; flex: 1; }
+
+.repo-item-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+}
+
+.setup-state {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.setup-manual {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.setup-manual summary {
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.setup-manual summary:hover { color: var(--text); }
+
+.setup-manual-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.setup-manual-row input { flex: 1; }
+
+.setup-config {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.setup-config-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.setup-config-repo {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  flex: 1;
+}
+
+.setup-detecting {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.user-repo {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  transition: color var(--transition);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.user-repo:hover { color: var(--text); border: none; }
