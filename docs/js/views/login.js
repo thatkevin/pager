@@ -1,4 +1,3 @@
-
 const GUIDE_HTML = `
   <div class="pat-guide">
     <div class="pat-guide-header">
@@ -35,13 +34,14 @@ const GUIDE_HTML = `
 `;
 
 export class LoginView {
-  constructor(onAuth, workerUrl = '') {
-    this.onAuth    = onAuth;
-    this.workerUrl = workerUrl;
+  constructor(onAuth, workerUrl = '', githubClientId = '') {
+    this.onAuth        = onAuth;
+    this.workerUrl     = workerUrl;
+    this.githubClientId = githubClientId;
   }
 
   render() {
-    const hasWorker = Boolean(this.workerUrl);
+    const hasOAuth = Boolean(this.workerUrl && this.githubClientId);
     return `
       <div class="login-screen">
         <div class="login-panel">
@@ -51,25 +51,16 @@ export class LoginView {
             <div class="login-retro-sub">★ github pages cms ★</div>
           </div>
 
-          ${hasWorker ? `
+          ${hasOAuth ? `
             <button class="btn btn-primary login-github-btn" id="github-btn">
               Login with GitHub
             </button>
-
-            <div class="device-code-screen" id="code-screen" style="display:none">
-              <p class="device-instructions">
-                Enter this code at <a href="https://github.com/login/device" target="_blank" rel="noopener" class="device-link">github.com/login/device ↗</a>
-              </p>
-              <div class="device-code-display" id="device-code-display"></div>
-              <button class="btn btn-ghost btn-sm" id="cancel-device-btn">Cancel</button>
-            </div>
-
             <div class="login-divider">
               <button class="btn-inline" id="toggle-pat-btn">Use a personal access token instead</button>
             </div>
           ` : ''}
 
-          <div class="login-form" id="login-form" ${hasWorker ? 'style="display:none"' : ''}>
+          <div class="login-form" id="login-form" ${hasOAuth ? 'style="display:none"' : ''}>
             <div class="field">
               <label>GitHub Personal Access Token</label>
               <input
@@ -84,7 +75,7 @@ export class LoginView {
             <button class="btn btn-primary" id="login-btn" type="button">Connect</button>
           </div>
 
-          ${!hasWorker ? `
+          ${!hasOAuth ? `
             <p class="login-hint">
               No token? <button class="btn-inline" id="guide-btn">How to get one ↗</button>
             </p>
@@ -105,8 +96,9 @@ export class LoginView {
     const err      = container.querySelector('#login-error');
     const loginBtn = container.querySelector('#login-btn');
     const input    = container.querySelector('#pat-input');
+    const loginForm = container.querySelector('#login-form');
 
-    // Guide (PAT instructions)
+    // Guide
     const guideBtn = container.querySelector('#guide-btn');
     const backdrop = container.querySelector('#guide-backdrop');
     if (guideBtn) {
@@ -115,13 +107,12 @@ export class LoginView {
       backdrop.querySelector('#guide-close').addEventListener('click', () => { backdrop.style.display = 'none'; });
     }
 
-    // PAT toggle (when device flow is primary)
+    // PAT toggle
     const togglePatBtn = container.querySelector('#toggle-pat-btn');
-    const loginForm    = container.querySelector('#login-form');
     if (togglePatBtn) {
       togglePatBtn.addEventListener('click', () => {
         const visible = loginForm.style.display !== 'none';
-        loginForm.style.display = visible ? 'none' : 'flex';
+        loginForm.style.display  = visible ? 'none' : 'flex';
         togglePatBtn.textContent = visible
           ? 'Use a personal access token instead'
           : 'Hide token form';
@@ -151,104 +142,20 @@ export class LoginView {
       input?.addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
     }
 
-    // Device flow
-    const githubBtn  = container.querySelector('#github-btn');
-    const codeScreen = container.querySelector('#code-screen');
-    const cancelBtn  = container.querySelector('#cancel-device-btn');
+    // GitHub OAuth redirect
+    const githubBtn = container.querySelector('#github-btn');
     if (githubBtn) {
-      let cancelled = false;
-      githubBtn.addEventListener('click', async () => {
-        cancelled = false;
-        githubBtn.disabled    = true;
-        githubBtn.textContent = 'Connecting…';
-        try {
-          await this.#deviceFlow(container, () => cancelled);
-        } catch (e) {
-          if (!cancelled) {
-            // Show error in the PAT form's error slot (ensure it's visible)
-            loginForm.style.display = 'flex';
-            if (err) {
-              err.textContent   = e.message || 'Login failed. Try again.';
-              err.style.display = 'block';
-            }
-          }
-          githubBtn.disabled    = false;
-          githubBtn.textContent = 'Login with GitHub';
-          if (codeScreen) codeScreen.style.display = 'none';
-        }
-      });
-      cancelBtn?.addEventListener('click', () => {
-        cancelled = true;
-        codeScreen.style.display = 'none';
-        githubBtn.style.display  = 'flex';
-        githubBtn.disabled       = false;
-        githubBtn.textContent    = 'Login with GitHub';
+      githubBtn.addEventListener('click', () => {
+        const state = crypto.randomUUID();
+        sessionStorage.setItem('pager_oauth_state', state);
+        const url = new URL('https://github.com/login/oauth/authorize');
+        url.searchParams.set('client_id',    this.githubClientId);
+        url.searchParams.set('redirect_uri', `${location.origin}/callback.html`);
+        url.searchParams.set('state',        state);
+        location.href = url.toString();
       });
     }
 
     if (!this.workerUrl) input?.focus();
-  }
-
-  async #deviceFlow(container, isCancelled) {
-    const githubBtn   = container.querySelector('#github-btn');
-    const codeScreen  = container.querySelector('#code-screen');
-    const codeDisplay = container.querySelector('#device-code-display');
-
-    // Request device code from worker
-    const codeRes = await fetch(`${this.workerUrl}/device/code`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:    'scope=repo',
-    });
-
-    if (!codeRes.ok) throw new Error('Failed to start GitHub login. Check the worker is deployed.');
-
-    const { device_code, user_code, interval = 5, expires_in = 900 } = await codeRes.json();
-
-    if (!device_code) throw new Error('GitHub did not return a device code. Is the OAuth App configured?');
-
-    // Show the code screen
-    codeDisplay.textContent  = user_code;
-    githubBtn.style.display  = 'none';
-    codeScreen.style.display = 'block';
-
-    // Poll until authorised or cancelled
-    const token = await this.#pollToken(device_code, interval * 1000, expires_in * 1000, isCancelled);
-
-    if (isCancelled()) return;
-
-    githubBtn.style.display  = 'flex';
-    codeScreen.style.display = 'none';
-
-    await this.onAuth(token);
-  }
-
-  async #pollToken(deviceCode, intervalMs, expiresMs, isCancelled) {
-    const deadline = Date.now() + expiresMs;
-    let delay = intervalMs;
-
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, delay));
-      if (isCancelled()) return null;
-
-      const res = await fetch(`${this.workerUrl}/token`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body:    new URLSearchParams({
-          device_code: deviceCode,
-          grant_type:  'urn:ietf:params:oauth:grant-type:device_code',
-        }).toString(),
-      });
-
-      const data = await res.json();
-
-      if (data.access_token)              return data.access_token;
-      if (data.error === 'slow_down')     { delay += 5000; continue; }
-      if (data.error === 'expired_token') throw new Error('Login code expired. Try again.');
-      if (data.error === 'access_denied') throw new Error('Access denied.');
-      // authorization_pending — keep polling
-    }
-
-    throw new Error('Login timed out. Try again.');
   }
 }

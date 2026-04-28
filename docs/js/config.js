@@ -6,7 +6,8 @@ export const CONFIG = {
   mediaPath: 'assets/images',
   pagesPath: 'pages',
   layouts:   ['post', 'slide', 'basic', 'default', 'category', 'home'],
-  // URL of the pager-auth Cloudflare Worker (enables GitHub OAuth login).
-  // Leave empty to require a personal access token instead.
+  // GitHub App client ID — fill in after creating the GitHub App.
+  githubClientId: '',
+  // URL of the pager-auth Cloudflare Worker.
   workerUrl: 'https://pager-auth.kevs.workers.dev',
 };
