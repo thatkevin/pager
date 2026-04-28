@@ -1503,6 +1503,15 @@ input[type="range"]::-webkit-slider-thumb {
 
 .setup-config > .btn-primary {
   margin-top: 10px;
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.setup-config > .btn-primary:hover {
+  background: var(--surface-2);
+  border-color: #3a3a3a;
+  color: var(--text);
 }
 
 .setup-config-head {
