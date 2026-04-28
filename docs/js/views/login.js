@@ -34,11 +34,12 @@ const GUIDE_HTML = `
 `;
 
 export class LoginView {
-  constructor(onAuth, workerUrl = '', githubClientId = '', githubAppSlug = '') {
+  constructor(onAuth, workerUrl = '', githubClientId = '', githubAppSlug = '', onReset = null) {
     this.onAuth         = onAuth;
     this.workerUrl      = workerUrl;
     this.githubClientId = githubClientId;
     this.githubAppSlug  = githubAppSlug;
+    this.onReset        = onReset;
   }
 
   render() {
@@ -93,6 +94,17 @@ export class LoginView {
     `;
   }
 
+  #showError(container, msg) {
+    const err = container.querySelector('#login-error');
+    if (!err) return;
+    const resetHtml = this.onReset
+      ? ` <button class="btn-inline" id="reset-btn">Start again</button>`
+      : '';
+    err.innerHTML    = `${msg.replace(/&/g,'&amp;').replace(/</g,'&lt;')}${resetHtml}`;
+    err.style.display = 'block';
+    err.querySelector('#reset-btn')?.addEventListener('click', () => this.onReset());
+  }
+
   bind(container) {
     const err      = container.querySelector('#login-error');
     const loginBtn = container.querySelector('#login-btn');
@@ -132,8 +144,7 @@ export class LoginView {
         try {
           await this.onAuth(token);
         } catch (e) {
-          err.textContent      = e.message || 'Authentication failed. Check your token and try again.';
-          err.style.display    = 'block';
+          this.#showError(container, e.message || 'Authentication failed. Check your token and try again.');
           loginBtn.disabled    = false;
           loginBtn.textContent = 'Connect';
           input.focus();

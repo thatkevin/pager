@@ -2,13 +2,14 @@ import { filenameToMeta } from '../jekyll.js';
 import { listDrafts, deleteDraft, draftsByPath } from '../drafts.js';
 
 export class PostsView {
-  constructor(client, config, { onEdit, onNew, onDraft, toast }) {
+  constructor(client, config, { onEdit, onNew, onDraft, toast, onSetup }) {
     this.client  = client;
     this.config  = config;
     this.onEdit  = onEdit;
     this.onNew   = onNew;
     this.onDraft = onDraft;
     this.toast   = toast;
+    this.onSetup = onSetup;
   }
 
   render() {
@@ -109,9 +110,35 @@ export class PostsView {
       }
 
     } catch (e) {
-      container.querySelector('#posts-loading').innerHTML =
-        `<span style="color:var(--red)">Failed to load posts: ${e.message}</span>`;
+      const loadingEl = container.querySelector('#posts-loading');
+      loadingEl.innerHTML = `<span style="color:var(--red)">Posts folder "${this.config.postsPath}" not found.</span>`;
+
+      const suggestion = await this.#findContentSuggestion();
+      const hint = document.createElement('p');
+      hint.style.cssText = 'margin:8px 0 0; font-size:13px; color:var(--text-muted)';
+      if (suggestion !== null) {
+        hint.innerHTML = `Found content in <code>${suggestion}</code> — <button class="btn-inline" id="posts-fix-btn">open settings to update</button>`;
+        loadingEl.appendChild(hint);
+        hint.querySelector('#posts-fix-btn').addEventListener('click', () => this.onSetup?.());
+      } else {
+        hint.textContent = 'Check your posts folder setting in Setup.';
+        hint.querySelector && loadingEl.appendChild(hint);
+        loadingEl.appendChild(hint);
+      }
     }
+  }
+
+  async #findContentSuggestion() {
+    const candidates = ['_posts', 'posts', 'content/posts', 'src/posts', 'content', '_content', 'blog', ''];
+    for (const path of candidates) {
+      if (path === this.config.postsPath) continue;
+      try {
+        const files = await this.client.listDir(path);
+        const found = files.some(f => f.type === 'file' && /\.(md|html?)$/i.test(f.name));
+        if (found) return path === '' ? '(repo root)' : path;
+      } catch { /* keep looking */ }
+    }
+    return null;
   }
 
   #renderDraftRow(draft) {

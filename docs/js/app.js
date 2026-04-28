@@ -132,6 +132,7 @@ function renderView(container, route, params) {
         onEdit:  path    => navigate('editor', { path }),
         onNew:   ()      => navigate('editor', { path: null }),
         onDraft: draftId => navigate('editor', { path: null, draftId }),
+        onSetup: ()      => navigate('setup'),
       });
       break;
 
@@ -286,10 +287,15 @@ function renderShell() {
         ${iconMedia()}
         <span>Media</span>
       </button>
+      <button class="mobile-nav-item" id="mobile-sign-out-btn">
+        ${iconSignOut()}
+        <span>Sign out</span>
+      </button>
     </nav>
   `;
 
   document.getElementById('sign-out-btn').addEventListener('click', signOut);
+  document.getElementById('mobile-sign-out-btn').addEventListener('click', signOut);
 
   document.querySelectorAll('.nav-item[data-route], .mobile-nav-item[data-route], .user-repo[data-route]').forEach(el => {
     el.addEventListener('click', () => {
@@ -309,7 +315,7 @@ function renderShell() {
 
 function renderLogin() {
   const app  = document.getElementById('app');
-  const view = new LoginView(authenticate, CONFIG.workerUrl, CONFIG.githubClientId, CONFIG.githubAppSlug);
+  const view = new LoginView(authenticate, CONFIG.workerUrl, CONFIG.githubClientId, CONFIG.githubAppSlug, signOut);
   app.innerHTML = view.render();
   view.bind(app);
 }
@@ -317,6 +323,47 @@ function renderLogin() {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 async function boot() {
+  // Handle GitHub OAuth callback (?code=…&state=…)
+  const params     = new URLSearchParams(location.search);
+  const code       = params.get('code');
+  const oauthState = params.get('state');
+  const oauthError = params.get('error');
+
+  if (code || oauthError) {
+    history.replaceState(null, '', location.pathname);
+
+    if (oauthError) {
+      renderLogin();
+      toast(`GitHub login failed: ${params.get('error_description') || oauthError}`, 'error');
+      return;
+    }
+
+    const savedState = sessionStorage.getItem('pager_oauth_state');
+    sessionStorage.removeItem('pager_oauth_state');
+
+    if (oauthState !== savedState) {
+      renderLogin();
+      toast('Login failed: invalid state. Please try again.', 'error');
+      return;
+    }
+
+    try {
+      const res  = await fetch(`${CONFIG.workerUrl}/exchange`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    `code=${encodeURIComponent(code)}`,
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      await authenticate(data.token);
+      return;
+    } catch (e) {
+      renderLogin();
+      toast(`Login failed: ${e.message}`, 'error');
+      return;
+    }
+  }
+
   const stored = localStorage.getItem(TOKEN_KEY);
 
   if (stored) {
@@ -366,5 +413,11 @@ function iconPages() {
 function iconMedia() {
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
     <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+  </svg>`;
+}
+
+function iconSignOut() {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
   </svg>`;
 }
