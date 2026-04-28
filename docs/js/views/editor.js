@@ -151,6 +151,8 @@ export class EditorView {
         previewTimer = setTimeout(() => this.#updatePreview(container, this.body), 300);
       });
 
+      textarea.addEventListener('paste', e => this.#handlePaste(e, textarea, container));
+
       draftBtn.addEventListener('click',   () => this.#saveDraft(container));
       publishBtn.addEventListener('click', () => this.#publish(container));
 
@@ -175,10 +177,16 @@ export class EditorView {
     };
   }
 
-  #setStatus(container, text, spinner = false) {
+  #setStatus(container, text, opts = false) {
+    if (typeof opts === 'boolean') opts = { spinner: opts };
+    const { spinner = false, href = null } = opts;
     const el = container.querySelector('#save-status');
     if (!el) return;
-    el.innerHTML = spinner ? `<div class="spinner"></div> ${text}` : text;
+    let html = spinner ? '<div class="spinner"></div> ' : '';
+    html += href
+      ? `<a href="${href}" target="_blank" rel="noopener" class="status-link">${text}</a>`
+      : text;
+    el.innerHTML = html;
   }
 
   // ── Save draft ─────────────────────────────────────────────────────────────
@@ -230,18 +238,62 @@ export class EditorView {
     }
   }
 
+  // ── Paste image ────────────────────────────────────────────────────────────
+
+  async #handlePaste(e, textarea, container) {
+    const imageItem = Array.from(e.clipboardData?.items ?? [])
+      .find(item => item.type.startsWith('image/'));
+    if (!imageItem) return;
+
+    e.preventDefault();
+
+    const blob = imageItem.getAsFile();
+    if (!blob) return;
+
+    const ext  = blob.type === 'image/png' ? 'png' : blob.type === 'image/gif' ? 'gif' : 'jpg';
+    const name = `paste-${Date.now()}.${ext}`;
+    const path = `${this.config.mediaPath}/${name}`;
+
+    // Insert placeholder at cursor so the user sees immediate feedback
+    const start       = textarea.selectionStart;
+    const end         = textarea.selectionEnd;
+    const placeholder = `![uploading ${name}…]()`;
+    textarea.value    = textarea.value.slice(0, start) + placeholder + textarea.value.slice(end);
+    textarea.selectionStart = textarea.selectionEnd = start + placeholder.length;
+    this.body  = textarea.value;
+    this.dirty = true;
+
+    this.#setStatus(container, 'Uploading image…', { spinner: true });
+
+    try {
+      await this.client.uploadBinary(path, blob, `Upload pasted image: ${name}`);
+      const md          = `![${name}](/${path})`;
+      textarea.value    = textarea.value.replace(placeholder, md);
+      this.body         = textarea.value;
+      this.#updatePreview(container, this.body);
+      this.#setStatus(container, 'Image uploaded');
+      this.toast('Image uploaded.', 'success');
+    } catch (err) {
+      textarea.value = textarea.value.replace(placeholder, '');
+      this.body      = textarea.value;
+      this.#setStatus(container, 'Upload failed');
+      this.toast(`Image upload failed: ${err.message}`, 'error');
+    }
+  }
+
   // ── Actions monitor ────────────────────────────────────────────────────────
 
   async #monitorDeploy(container) {
     const publishBtn = container.querySelector('#publish-btn');
-    this.#setStatus(container, 'Deploying…', true);
+    const actionsUrl = `https://github.com/${this.config.owner}/${this.config.repo}/actions`;
+    this.#setStatus(container, 'Deploying…', { spinner: true, href: actionsUrl });
 
     const started = Date.now();
     const TIMEOUT = 3 * 60_000;
 
     const poll = async () => {
       if (Date.now() - started > TIMEOUT) {
-        this.#setStatus(container, 'Deploy timed out');
+        this.#setStatus(container, 'Deploy timed out', { href: actionsUrl });
         publishBtn.disabled = false;
         return;
       }
@@ -252,9 +304,9 @@ export class EditorView {
           return;
         }
         if (run.conclusion === 'success') {
-          this.#setStatus(container, 'Live ✓');
+          this.#setStatus(container, 'Live ✓', { href: actionsUrl });
         } else {
-          this.#setStatus(container, `Deploy ${run.conclusion}`);
+          this.#setStatus(container, `Deploy ${run.conclusion}`, { href: actionsUrl });
         }
       } catch {
         this.#pollTimer = setTimeout(poll, 5000);
@@ -263,7 +315,6 @@ export class EditorView {
       publishBtn.disabled = false;
     };
 
-    // Short delay to let GitHub register the Actions run
     this.#pollTimer = setTimeout(poll, 4000);
   }
 

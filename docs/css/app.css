@@ -606,6 +606,14 @@ select {
   gap: 6px;
 }
 
+.status-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.status-link:hover { color: var(--text); }
+
 .editor-meta {
   padding: 16px 28px;
   border-bottom: 1px solid var(--border-light);
