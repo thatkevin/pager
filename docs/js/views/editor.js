@@ -341,9 +341,10 @@ export class EditorView {
     const blob = imageItem.getAsFile();
     if (!blob) return;
 
-    const ext  = blob.type === 'image/png' ? 'png' : blob.type === 'image/gif' ? 'gif' : 'jpg';
-    const name = `paste-${Date.now()}.${ext}`;
-    const path = `${this.config.mediaPath}/${name}`;
+    const isGif = blob.type === 'image/gif';
+    const ext   = isGif ? 'gif' : 'webp';
+    const name  = `paste-${Date.now()}.${ext}`;
+    const path  = `${this.config.mediaPath}/${name}`;
 
     const start       = textarea.selectionStart;
     const end         = textarea.selectionEnd;
@@ -358,12 +359,12 @@ export class EditorView {
     this.#setStatus(container, 'Uploading image…', { spinner: true });
 
     try {
-      const resized = await this.#resizeImage(blob);
-      await this.client.uploadBinary(path, resized, `Upload pasted image: ${name}`);
+      const processed = await this.#processImage(blob);
+      await this.client.uploadBinary(path, processed, `Upload pasted image: ${name}`);
 
       // Store a blob URL so the preview can show the image immediately without
       // waiting for GitHub's CDN to propagate the upload
-      const objectUrl = URL.createObjectURL(resized);
+      const objectUrl = URL.createObjectURL(processed);
       this.#blobUrls.set(`/${path}`, objectUrl);
 
       const insertion = this.#isHtmlFile
@@ -382,19 +383,17 @@ export class EditorView {
     }
   }
 
-  async #resizeImage(blob) {
+  async #processImage(blob) {
+    if (blob.type === 'image/gif') return blob;
     const maxWidth = this.config.maxImageWidth;
-    if (!maxWidth || maxWidth <= 0) return blob;
-    const bitmap = await createImageBitmap(blob);
-    if (bitmap.width <= maxWidth) { bitmap.close(); return blob; }
-    const scale  = maxWidth / bitmap.width;
-    const w      = Math.round(bitmap.width  * scale);
-    const h      = Math.round(bitmap.height * scale);
+    const bitmap   = await createImageBitmap(blob);
+    const needsResize = maxWidth > 0 && bitmap.width > maxWidth;
+    const w = needsResize ? maxWidth                              : bitmap.width;
+    const h = needsResize ? Math.round(bitmap.height * (maxWidth / bitmap.width)) : bitmap.height;
     const canvas = new OffscreenCanvas(w, h);
     canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
     bitmap.close();
-    const type = blob.type === 'image/png' ? 'image/png' : 'image/jpeg';
-    return canvas.convertToBlob({ type, quality: 0.85 });
+    return canvas.convertToBlob({ type: 'image/webp', quality: 0.85 });
   }
 
   // ── Optimise images ────────────────────────────────────────────────────────
@@ -456,8 +455,8 @@ export class EditorView {
         const uniqueSizes = [...new Set(sizes)].sort((a, b) => a - b);
 
         const basePath = filePath.replace(/\.[^.]+$/, '');
-        const ext      = blob.type === 'image/png' ? 'png' : 'jpg';
-        const mimeType = blob.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const ext      = 'webp';
+        const mimeType = 'image/webp';
         const srcsetParts = [];
 
         for (const w of uniqueSizes) {
