@@ -58,7 +58,7 @@ export class LoginView {
 
             <div class="device-code-screen" id="code-screen" style="display:none">
               <p class="device-instructions">
-                Go to <strong>github.com/login/device</strong> and enter:
+                Enter this code at <a href="https://github.com/login/device" target="_blank" rel="noopener" class="device-link">github.com/login/device ↗</a>
               </p>
               <div class="device-code-display" id="device-code-display"></div>
               <button class="btn btn-ghost btn-sm" id="cancel-device-btn">Cancel</button>

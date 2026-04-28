@@ -1182,6 +1182,15 @@ input[type="range"]::-webkit-slider-thumb {
 
 .device-instructions strong { color: var(--text); }
 
+.device-link {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 2px;
+}
+
+.device-link:hover { text-decoration-color: var(--text-muted); }
+
 .device-code-display {
   font-family: 'Press Start 2P', monospace;
   font-size: 16px;
