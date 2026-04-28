@@ -47,6 +47,8 @@ const THEME_LAYOUTS = {
   'time-machine':          ['default'],
 };
 
+const PAGER_CMS_PATH = '.pagercms';
+
 function parseConfigYml(text) {
   const scalar = key => {
     const m = text.match(new RegExp(`^${key}:\\s*["']?([^"'\\n]+?)["']?\\s*$`, 'm'));
@@ -65,15 +67,17 @@ function parseConfigYml(text) {
 }
 
 export class SetupView {
-  constructor(client, config, { toast, onDone, initialValues = null }) {
+  constructor(client, config, { toast, onDone, initialValues = null, lastRepo = null }) {
     this.client        = client;
     this.config        = config;
     this.toast         = toast;
     this.onDone        = onDone;
     this.initialValues = initialValues;
+    this.lastRepo      = lastRepo;
     this.repos         = [];
     this.selected      = null;
     this._el           = null;
+    this._pagerCmsSha  = null;
   }
 
   render() {
@@ -105,6 +109,7 @@ export class SetupView {
             <div class="setup-config-head">
               <span class="setup-config-repo" id="setup-repo-name">${iv ? `${iv.owner}/${iv.repo}` : ''}</span>
               <span class="setup-detecting" id="setup-detecting" style="display:none">Detecting…</span>
+              <span class="setup-pager-source" id="setup-pager-source" style="display:none">From .pagercms</span>
             </div>
 
             <div class="field">
@@ -126,14 +131,19 @@ export class SetupView {
               <input type="text" id="setup-media-path" value="${iv?.mediaPath ?? ''}" autocomplete="off">
             </div>
             <div class="field">
-              <label>Layouts (comma-separated)</label>
+              <label>Layouts <span class="field-hint">(comma-separated)</span></label>
               <input type="text" id="setup-layouts" value="${iv?.layouts?.join(', ') ?? ''}" autocomplete="off">
             </div>
             <div class="field">
-              <label>Max image width (px)</label>
-              <input type="number" id="setup-max-img-width" value="${iv?.maxImageWidth ?? ''}"
-                     placeholder="e.g. 1200 — leave blank to keep originals" min="100" max="8000">
+              <label>Max image width <span class="field-hint">(px, leave blank to keep originals)</span></label>
+              <input type="text" inputmode="numeric" id="setup-max-img-width"
+                     value="${iv?.maxImageWidth ?? ''}" placeholder="e.g. 1200" autocomplete="off">
             </div>
+
+            <label class="setup-save-label">
+              <input type="checkbox" id="setup-save-pager" ${iv ? '' : 'checked'}>
+              Save settings to <code>.pagercms</code> in this repo
+            </label>
 
             <button class="btn btn-primary" id="setup-confirm-btn">Continue</button>
           </div>
@@ -161,8 +171,13 @@ export class SetupView {
     el.querySelector('#setup-confirm-btn').addEventListener('click', () => this._confirm());
 
     if (this.initialValues) {
-      const { owner, repo } = this.initialValues;
+      const { owner, repo, branch } = this.initialValues;
       this.selected = { full_name: `${owner}/${repo}` };
+      // Fetch existing .pagercms sha so we can update rather than clobber
+      this.client.withRepo(owner, repo, branch)
+        .getFile(PAGER_CMS_PATH)
+        .then(f => { this._pagerCmsSha = f.sha; })
+        .catch(() => { this._pagerCmsSha = null; });
     }
   }
 
@@ -186,6 +201,12 @@ export class SetupView {
       this.repos = [];
     }
     this._renderList('');
+
+    // Auto-select the last-used repo when opening setup fresh
+    if (!this.initialValues && this.lastRepo) {
+      const match = this.repos.find(r => r.full_name === this.lastRepo);
+      if (match) this._select(match.full_name, match.default_branch ?? 'main');
+    }
   }
 
   _renderList(filter) {
@@ -232,6 +253,7 @@ export class SetupView {
     const configPanel = this._el.querySelector('#setup-config');
     configPanel.style.display = 'block';
     this._el.querySelector('#setup-repo-name').textContent = fullName;
+    this._el.querySelector('#setup-pager-source').style.display = 'none';
 
     this._el.querySelectorAll('.repo-item').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.name === fullName);
@@ -244,7 +266,32 @@ export class SetupView {
 
     const [owner, repo] = fullName.split('/');
     const tempClient    = this.client.withRepo(owner, repo, defaultBranch);
-    const probe         = async path => {
+
+    // Try .pagercms first — skip detection if found
+    try {
+      const pagerFile = await tempClient.getFile(PAGER_CMS_PATH);
+      const cfg       = JSON.parse(pagerFile.content);
+      this._pagerCmsSha = pagerFile.sha;
+
+      if (cfg.branch) this._el.querySelector('#setup-branch').value = cfg.branch;
+      this._el.querySelector('#setup-posts-path').value    = cfg.postsPath    ?? '';
+      this._el.querySelector('#setup-pages-path').value    = cfg.pagesPath    ?? '';
+      this._el.querySelector('#setup-media-path').value    = cfg.mediaPath    ?? '';
+      this._el.querySelector('#setup-layouts').value       = Array.isArray(cfg.layouts) ? cfg.layouts.join(', ') : '';
+      this._el.querySelector('#setup-max-img-width').value = cfg.maxImageWidth ?? '';
+      this._el.querySelector('#setup-save-pager').checked  = true;
+      this._el.querySelector('#setup-pager-source').style.display = 'inline';
+
+      detectingEl.style.display = 'none';
+      this._el.querySelector('#setup-confirm-btn').disabled = false;
+      configPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    } catch {
+      this._pagerCmsSha = null;
+    }
+
+    // No .pagercms — auto-detect from repo structure
+    const probe = async path => {
       try { await tempClient.listDir(path); return true; } catch { return false; }
     };
 
@@ -271,13 +318,11 @@ export class SetupView {
 
       let layouts = fallback.layouts;
       if (Array.isArray(layoutFiles) && layoutFiles.length) {
-        // Local _layouts/ directory found — use those
         const detected = layoutFiles
           .filter(f => f.type === 'file' && f.name.match(/\.(html|liquid|erb|md)$/))
           .map(f => f.name.replace(/\.[^.]+$/, ''));
         if (detected.length) layouts = detected;
       } else if (cfg.theme && THEME_LAYOUTS[cfg.theme]) {
-        // Gem-based theme: _layouts/ is hidden in the gem, use the known layout list
         layouts = THEME_LAYOUTS[cfg.theme];
       }
 
@@ -292,12 +337,13 @@ export class SetupView {
       this._el.querySelector('#setup-layouts').value    = fallback.layouts.join(', ');
     }
 
+    this._el.querySelector('#setup-save-pager').checked = true;
     detectingEl.style.display = 'none';
     this._el.querySelector('#setup-confirm-btn').disabled = false;
     configPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  _confirm() {
+  async _confirm() {
     if (!this.selected) {
       this.toast('Select a repository first', 'error');
       return;
@@ -311,6 +357,24 @@ export class SetupView {
     const maxImgRaw     = parseInt(this._el.querySelector('#setup-max-img-width').value, 10);
     const maxImageWidth = maxImgRaw > 0 ? maxImgRaw : null;
     const [owner, repo] = this.selected.full_name.split('/');
+
+    if (this._el.querySelector('#setup-save-pager')?.checked) {
+      const cfg = { version: '0.1', branch, postsPath, pagesPath, mediaPath, layouts };
+      if (maxImageWidth) cfg.maxImageWidth = maxImageWidth;
+      try {
+        const saveClient = this.client.withRepo(owner, repo, branch);
+        await saveClient.writeFile(
+          PAGER_CMS_PATH,
+          JSON.stringify(cfg, null, 2) + '\n',
+          this._pagerCmsSha ? 'Update PAGER CMS config' : 'Add PAGER CMS config',
+          this._pagerCmsSha,
+        );
+        this.toast('Settings saved to .pagercms', 'success');
+      } catch (e) {
+        this.toast(`Could not save .pagercms: ${e.message}`, 'error');
+      }
+    }
+
     this.onDone({ owner, repo, branch, postsPath, pagesPath, mediaPath, layouts, maxImageWidth });
   }
 }

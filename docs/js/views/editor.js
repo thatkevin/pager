@@ -1,8 +1,8 @@
 import { parseFrontmatter, buildPostContent, filenameFromPost, filenameFromPage, dateToIso } from '../jekyll.js';
 import { saveDraft, loadDraft, deleteDraft } from '../drafts.js';
 
-const MARKED_URL   = 'https://esm.sh/marked@13';
-const PURIFY_URL   = 'https://esm.sh/dompurify@3';
+const MARKED_URL   = '../vendor/marked.js';
+const PURIFY_URL   = '../vendor/dompurify.js';
 let markedPromise  = null;
 let purifyPromise  = null;
 const getMarked = () => markedPromise  ??= import(MARKED_URL).then(m => m.marked);

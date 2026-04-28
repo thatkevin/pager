@@ -39,6 +39,7 @@ function toast(message, type = 'info') {
 
 const TOKEN_KEY       = 'cms_gh_token';
 const REPO_CONFIG_KEY = 'cms_repo_config';
+const LAST_REPO_KEY   = 'cms_last_repo';
 
 function loadRepoConfig() {
   try {
@@ -50,6 +51,7 @@ function loadRepoConfig() {
 function applyRepoConfig(cfg) {
   state.repoConfig = cfg;
   localStorage.setItem(REPO_CONFIG_KEY, JSON.stringify(cfg));
+  localStorage.setItem(LAST_REPO_KEY, `${cfg.owner}/${cfg.repo}`);
   state.client = new GitHubClient(state.token, cfg.owner, cfg.repo, cfg.branch);
   // Update the repo label in the shell without a full re-render
   const repoEl = document.querySelector('.user-repo');
@@ -86,6 +88,7 @@ async function authenticate(token) {
 function signOut() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REPO_CONFIG_KEY);
+  // LAST_REPO_KEY is intentionally kept so the setup screen can pre-select it next login
   state.token      = null;
   state.client     = null;
   state.user       = null;
@@ -123,6 +126,7 @@ function renderView(container, route, params) {
         toast,
         onDone:        applyRepoConfig,
         initialValues: state.repoConfig ?? null,
+        lastRepo:      localStorage.getItem(LAST_REPO_KEY) ?? null,
       });
       break;
 

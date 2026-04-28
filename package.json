@@ -5,7 +5,8 @@
   "scripts": {
     "test":            "vitest run",
     "test:watch":      "vitest",
-    "test:integration": "vitest run --config vitest.integration.config.js"
+    "test:integration": "vitest run --config vitest.integration.config.js",
+    "vendor:update":   "node scripts/update-vendor.js"
   },
   "devDependencies": {
     "vitest": "^2.1.0"
