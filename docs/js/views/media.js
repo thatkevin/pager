@@ -593,9 +593,13 @@ export class MediaView {
       if (dir == null) return;
       try {
         const items = await this.client.listDir(dir || '');
-        items
-          .filter(i => i.type === 'file' && /\.(md|html?)$/i.test(i.name))
-          .forEach(i => filePaths.add(i.path));
+        for (const i of items) {
+          if (i.type === 'dir') {
+            await scanDir(i.path);
+          } else if (i.type === 'file' && /\.(md|html?)$/i.test(i.name)) {
+            filePaths.add(i.path);
+          }
+        }
       } catch {}
     };
 
@@ -610,118 +614,40 @@ export class MediaView {
         const file    = await this.client.getFile(filePath);
         let content   = file.content;
         let changed   = false;
+
         for (const [oldPath, newPath] of renames) {
-          const needle = `/${oldPath}`;
-          if (content.includes(needle)) {
-            content = content.split(needle).join(`/${newPath}`);
+          // 1. Root-relative: /assets/img.jpg
+          const rootOld = `/${oldPath}`;
+          const rootNew = `/${newPath}`;
+          if (content.includes(rootOld)) {
+            content = content.split(rootOld).join(rootNew);
             changed = true;
           }
-        }
-        if (changed) {
-          await this.client.writeFile(filePath, content, 'Update media references after rename', file.sha);
-          updated++;
-        }
-      } catch {}
-    }
 
-    return updated;
-  }
-}
+          // 2. Relative to file (very common in Jekyll if pagesPath is set)
+          // oldPath is e.g. "assets/images/img.jpg"
+          // If we find just the filename in a likely image context
+          const oldName = oldPath.split('/').pop();
+          const newName = newPath.split('/').pop();
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function groupItems(items) {
-  // Build map: base name → sorted variant items
-  const variantsByBase = new Map();
-  for (const item of items) {
-    const m = item.name.match(VARIANT_RE);
-    if (!m) continue;
-    const base = m[1];
-    if (!variantsByBase.has(base)) variantsByBase.set(base, []);
-    variantsByBase.get(base).push({ item, width: parseInt(m[2]) });
-  }
-  for (const arr of variantsByBase.values()) arr.sort((a, b) => a.width - b.width);
-
-  const groups         = [];
-  const claimedVariants = new Set();
-
-  // Originals first (non-variant files)
-  for (const item of items) {
-    if (VARIANT_RE.test(item.name)) continue;
-    const base     = item.name.replace(/\.[^.]+$/, '');
-    const varArr   = variantsByBase.get(base) ?? [];
-    const variants = varArr.map(v => v.item);
-    variants.forEach(v => claimedVariants.add(v.name));
-    groups.push({ primary: item, variants });
-  }
-
-  // Orphaned variant groups (original file was deleted / never existed)
-  for (const arr of variantsByBase.values()) {
-    const unclaimed = arr.filter(v => !claimedVariants.has(v.item.name));
-    if (!unclaimed.length) continue;
-    const primary  = unclaimed.at(-1).item;          // largest as representative
-    const variants = unclaimed.slice(0, -1).map(v => v.item);
-    groups.push({ primary, variants });
-  }
-
-  return groups;
-}
-
-function chipLabel(item) {
-  const m = item.name.match(/-(\d+)w\.\w+$/);
-  return m ? `${m[1]}w` : 'orig';
-}
-
-async function resizeImage(file, maxWidth, quality) {
-  const bitmap = await createImageBitmap(file);
-  const scale  = maxWidth > 0 ? Math.min(1, maxWidth / bitmap.width) : 1;
-  const w      = Math.round(bitmap.width  * scale);
-  const h      = Math.round(bitmap.height * scale);
-  const canvas = new OffscreenCanvas(w, h);
-  canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
-  bitmap.close();
-  const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-  return canvas.convertToBlob({ type, quality });
-}
-
-function sanitizeFilename(name) {
-  return name
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9._-]/g, '');
-}
-
-  async #updateReferences(renames) {
-    const filePaths = new Set();
-
-    const scanDir = async dir => {
-      if (dir == null) return;
-      try {
-        const items = await this.client.listDir(dir || '');
-        items
-          .filter(i => i.type === 'file' && /\.(md|html?)$/i.test(i.name))
-          .forEach(i => filePaths.add(i.path));
-      } catch {}
-    };
-
-    await Promise.all([
-      scanDir(this.config.postsPath),
-      scanDir(this.config.pagesPath ?? null),
-    ]);
-
-    let updated = 0;
-    for (const filePath of filePaths) {
-      try {
-        const file    = await this.client.getFile(filePath);
-        let content   = file.content;
-        let changed   = false;
-        for (const [oldPath, newPath] of renames) {
-          const needle = `/${oldPath}`;
-          if (content.includes(needle)) {
-            content = content.split(needle).join(`/${newPath}`);
-            changed = true;
+          // Regex to find occurrences in markdown ![alt](path) or html src="path"
+          // This is broader but safer if people use relative paths
+          const escapedOldName = oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const re = new RegExp(`(?<=[(\"'])([^\"')]*?)${escapedOldName}`, 'g');
+          
+          if (re.test(content)) {
+            content = content.replace(re, (match, p1) => {
+              // Only replace if the path part matches the old directory structure
+              const oldDir = oldPath.substring(0, oldPath.lastIndexOf('/'));
+              if (p1.endsWith(oldDir + '/') || p1 === '' || p1 === './') {
+                changed = true;
+                return p1 + newName;
+              }
+              return match;
+            });
           }
         }
+
         if (changed) {
           await this.client.writeFile(filePath, content, 'Update media references after rename', file.sha);
           updated++;

@@ -62,7 +62,9 @@ export class GitHubClient {
     const data = await this.#req(
       `/repos/${this.#owner}/${this.#repo}/contents/${path}?ref=${this.#branch}`
     );
-    return { content: b64Decode(data.content), sha: data.sha, path: data.path };
+    const srcSha = data.sha;
+    const blob = await this.#req(`/repos/${this.#owner}/${this.#repo}/git/blobs/${srcSha}`);
+    return { content: b64Decode(blob.content), sha: srcSha, path: data.path };
   }
 
   async writeFile(path, content, message, sha = null) {
@@ -92,8 +94,12 @@ export class GitHubClient {
     const data = await this.#req(
       `/repos/${this.#owner}/${this.#repo}/contents/${srcPath}?ref=${this.#branch}`
     );
-    const base64 = data.content.replace(/\n/g, '');
     const srcSha = data.sha;
+    
+    // For files > 1MB, the 'content' field is omitted. Fetch via Data API.
+    const blob = await this.#req(`/repos/${this.#owner}/${this.#repo}/git/blobs/${srcSha}`);
+    const base64 = blob.content.replace(/\n/g, '');
+
     await this.#req(`/repos/${this.#owner}/${this.#repo}/contents/${destPath}`, {
       method: 'PUT',
       body: JSON.stringify({ message, content: base64, branch: this.#branch }),
