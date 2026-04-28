@@ -93,36 +93,44 @@ export class PagesView {
   }
 
   async #fetchPageFiles() {
-    const isPageFile = name => /\.(html?|md)$/i.test(name);
+    const isPageFile  = name => /\.(html?|md)$/i.test(name);
+    const isNonPage   = name => /^(README|CONTRIBUTING|CHANGELOG|LICENSE|CODEOWNERS)(\..+)?$/i.test(name);
     const files = [];
     const seen  = new Set();
 
     const add = f => {
-      if (!seen.has(f.path) && f.type === 'file' && isPageFile(f.name)) {
+      if (!seen.has(f.path) && f.type === 'file' && isPageFile(f.name) && !isNonPage(f.name)) {
         seen.add(f.path);
         files.push(f);
       }
     };
 
+    const pagesPath    = this.config.pagesPath;
+    const hasPagePath  = typeof pagesPath === 'string'; // '' is valid (root)
+    const pagesIsRoot  = pagesPath === '';
+
     const tasks = [];
 
-    if (this.config.pagesPath) {
+    if (hasPagePath) {
+      // List the configured pages folder (empty string = repo root for all page files)
       tasks.push(
-        this.client.listDir(this.config.pagesPath)
+        this.client.listDir(pagesPath)
           .then(list => list.forEach(add))
           .catch(() => {})
       );
     }
 
-    // Root-level HTML files (index.html, about.html, etc.)
-    tasks.push(
-      this.client.listDir('')
-        .then(list => list
-          .filter(f => f.type === 'file' && /\.html?$/i.test(f.name))
-          .forEach(add)
-        )
-        .catch(() => {})
-    );
+    // Root-level HTML files — only if pagesPath isn't already root
+    if (!pagesIsRoot) {
+      tasks.push(
+        this.client.listDir('')
+          .then(list => list
+            .filter(f => f.type === 'file' && /\.html?$/i.test(f.name))
+            .forEach(add)
+          )
+          .catch(() => {})
+      );
+    }
 
     await Promise.all(tasks);
     return files.sort((a, b) => a.path.localeCompare(b.path));
