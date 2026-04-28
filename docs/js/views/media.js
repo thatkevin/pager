@@ -1,3 +1,5 @@
+const VARIANT_RE = /^(.+)-(\d+)w\.\w+$/;
+
 export class MediaView {
   constructor(client, config, { toast, pickMode = false, onPick }) {
     this.client   = client;
@@ -5,7 +7,8 @@ export class MediaView {
     this.toast    = toast;
     this.pickMode = pickMode;
     this.onPick   = onPick;
-    this.items    = [];
+    this.items    = [];   // flat list
+    this.groups   = [];   // grouped for display
   }
 
   render() {
@@ -45,24 +48,18 @@ export class MediaView {
     if (this.pickMode) {
       container.querySelector('#cancel-pick')?.addEventListener('click', () => this.onPick(null));
     }
-
     this.#bindUpload(container);
     await this.#loadMedia(container);
   }
 
   #bindUpload(container) {
-    const zone   = container.querySelector('#drop-zone');
-    const input  = container.querySelector('#file-input');
+    const zone  = container.querySelector('#drop-zone');
+    const input = container.querySelector('#file-input');
 
     zone.addEventListener('click', () => input.click());
 
-    zone.addEventListener('dragover', e => {
-      e.preventDefault();
-      zone.classList.add('drag-over');
-    });
-
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-
     zone.addEventListener('drop', e => {
       e.preventDefault();
       zone.classList.remove('drag-over');
@@ -82,10 +79,9 @@ export class MediaView {
   }
 
   #showUploadModal(container, files) {
-    const file = files[0];
+    const file      = files[0];
     const remaining = files.slice(1);
-
-    const preview = URL.createObjectURL(file);
+    const preview   = URL.createObjectURL(file);
     const defaultName = sanitizeFilename(file.name);
 
     const modal = document.createElement('div');
@@ -140,9 +136,9 @@ export class MediaView {
 
     const qualityRange = modal.querySelector('#quality-range');
     const qualityLabel = modal.querySelector('#quality-label');
-    qualityRange.addEventListener('input', () => {
-      qualityLabel.textContent = `${qualityRange.value}%`;
-    });
+    qualityRange.addEventListener('input', () => { qualityLabel.textContent = `${qualityRange.value}%`; });
+
+    const close = () => { URL.revokeObjectURL(preview); modal.remove(); };
 
     modal.querySelector('#modal-close').addEventListener('click', close);
     modal.querySelector('#modal-cancel').addEventListener('click', close);
@@ -157,25 +153,21 @@ export class MediaView {
 
       if (!name) return;
 
-      btn.disabled  = true;
+      btn.disabled = true;
       errEl.style.display = 'none';
       prog.style.display  = 'block';
       fill.style.width    = '20%';
 
       try {
-        const blob     = maxWidth > 0 ? await resizeImage(file, maxWidth, quality) : file;
+        const blob = maxWidth > 0 ? await resizeImage(file, maxWidth, quality) : file;
         fill.style.width = '60%';
-        const path     = `${this.config.mediaPath}/${name}`;
+        const path = `${this.config.mediaPath}/${name}`;
         await this.client.uploadBinary(path, blob, `Upload media: ${name}`);
         fill.style.width = '100%';
         this.toast(`Uploaded ${name}`, 'success');
         close();
-        URL.revokeObjectURL(preview);
         await this.#loadMedia(container);
-
-        if (remaining.length) {
-          setTimeout(() => this.#showUploadModal(container, remaining), 200);
-        }
+        if (remaining.length) setTimeout(() => this.#showUploadModal(container, remaining), 200);
       } catch (e) {
         errEl.textContent   = `Upload failed: ${e.message}`;
         errEl.style.display = 'block';
@@ -184,13 +176,10 @@ export class MediaView {
       }
     });
 
-    function close() {
-      URL.revokeObjectURL(preview);
-      modal.remove();
-    }
-
     modal.querySelector('#upload-name').focus();
   }
+
+  // ── Load & group ────────────────────────────────────────────────────────────
 
   async #loadMedia(container) {
     const loading = container.querySelector('#media-loading');
@@ -203,21 +192,16 @@ export class MediaView {
     grid.innerHTML        = '';
 
     try {
-      const items = await this.client.listDir(this.config.mediaPath);
-      this.items = items.filter(i => i.type === 'file' && /\.(jpe?g|png|gif|webp|svg)$/i.test(i.name));
-
+      const items  = await this.client.listDir(this.config.mediaPath);
+      this.items   = items.filter(i => i.type === 'file' && /\.(jpe?g|png|gif|webp|svg)$/i.test(i.name));
+      this.groups  = groupItems(this.items);
       loading.style.display = 'none';
 
-      if (!this.items.length) {
-        empty.style.display = 'flex';
-        return;
-      }
+      if (!this.groups.length) { empty.style.display = 'flex'; return; }
 
       grid.style.display = 'grid';
-
-      for (const item of this.items) {
-        const el = this.#renderItem(item);
-        grid.appendChild(el);
+      for (const group of this.groups) {
+        grid.appendChild(this.#renderGroup(group, container));
       }
     } catch (e) {
       loading.innerHTML = '<span style="color:var(--red)"></span>';
@@ -225,28 +209,41 @@ export class MediaView {
     }
   }
 
-  #renderItem(item) {
-    const rawUrl = this.client.rawUrl(item.path);
-    const div    = document.createElement('div');
+  // ── Render group card ───────────────────────────────────────────────────────
+
+  #renderGroup({ primary, variants }, container) {
+    const rawUrl    = this.client.rawUrl(primary.path);
+    const assetPath = `/${primary.path}`;
+    const allFiles  = [primary, ...variants];
+    const hasVars   = variants.length > 0;
+
+    const div = document.createElement('div');
     div.className = 'media-item';
 
-    const assetPath = `/${item.path}`;
-
     div.innerHTML = `
-      <img class="media-thumb" src="${rawUrl}" alt="${item.name}" loading="lazy">
+      <img class="media-thumb" src="${rawUrl}" alt="${primary.name}" loading="lazy">
+      ${hasVars ? `<span class="variant-badge">${allFiles.length} sizes</span>` : ''}
       <div class="media-item-info">
-        <div class="media-item-name" title="${item.name}">${item.name}</div>
+        <div class="media-item-name" title="${primary.name}">${primary.name}</div>
+        ${hasVars ? `
+          <div class="variant-chips">
+            ${allFiles.map(f => `<span class="variant-chip">${chipLabel(f)}</span>`).join('')}
+          </div>
+        ` : ''}
       </div>
       <div class="media-item-overlay">
-        <button class="btn btn-sm btn-primary copy-btn">Copy path</button>
-        ${!this.pickMode ? `<button class="btn btn-sm btn-danger delete-btn">Delete</button>` : ''}
+        <button class="btn btn-sm btn-primary copy-btn">${this.pickMode ? 'Select' : 'Copy path'}</button>
+        ${!this.pickMode ? `
+          <button class="btn btn-sm btn-ghost rename-btn">Rename</button>
+          <button class="btn btn-sm btn-danger delete-btn">Delete${hasVars ? ` +${variants.length}` : ''}</button>
+        ` : ''}
       </div>
     `;
 
     div.querySelector('.copy-btn').addEventListener('click', e => {
       e.stopPropagation();
       if (this.pickMode) {
-        this.onPick(item.path);
+        this.onPick(primary.path);
       } else {
         navigator.clipboard.writeText(assetPath);
         this.toast('Path copied.', 'success');
@@ -254,13 +251,24 @@ export class MediaView {
     });
 
     if (!this.pickMode) {
+      div.querySelector('.rename-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        this.#showRenameModal(container, primary, variants);
+      });
+
       div.querySelector('.delete-btn').addEventListener('click', async e => {
         e.stopPropagation();
-        if (!confirm(`Delete ${item.name}?`)) return;
+        const total = allFiles.length;
+        const msg   = total > 1
+          ? `Delete ${primary.name} and ${variants.length} variant file${variants.length > 1 ? 's' : ''}?`
+          : `Delete ${primary.name}?`;
+        if (!confirm(msg)) return;
         try {
-          await this.client.deleteFile(item.path, item.sha, `Delete media: ${item.name}`);
+          for (const f of allFiles) {
+            await this.client.deleteFile(f.path, f.sha, `Delete media: ${f.name}`);
+          }
           div.remove();
-          this.toast('Deleted.', 'success');
+          this.toast(`Deleted ${total} file${total > 1 ? 's' : ''}.`, 'success');
         } catch (err) {
           this.toast(`Delete failed: ${err.message}`, 'error');
         }
@@ -269,11 +277,205 @@ export class MediaView {
 
     if (this.pickMode) {
       div.style.cursor = 'pointer';
-      div.addEventListener('click', () => this.onPick(item.path));
+      div.addEventListener('click', () => this.onPick(primary.path));
     }
 
     return div;
   }
+
+  // ── Rename ──────────────────────────────────────────────────────────────────
+
+  #showRenameModal(container, primary, variants) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:380px">
+        <div class="modal-header">
+          <h2>Rename</h2>
+          <button class="btn btn-ghost btn-sm" id="modal-close">✕</button>
+        </div>
+        <div class="modal-fields">
+          <div class="field">
+            <label>New filename</label>
+            <input type="text" id="rename-input" value="${primary.name}" spellcheck="false" autocomplete="off">
+          </div>
+          ${variants.length ? `<p style="font-size:11px;color:var(--text-muted);margin:0">${variants.length} variant file${variants.length > 1 ? 's' : ''} will be renamed automatically.</p>` : ''}
+          <div class="rename-progress" id="rename-progress" style="display:none">
+            <div class="spinner"></div>
+            <span id="rename-status">Renaming…</span>
+          </div>
+          <div id="rename-error" class="login-error" style="display:none"></div>
+        </div>
+        <div class="modal-footer" id="rename-footer">
+          <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancel</button>
+          <button class="btn btn-primary" id="rename-confirm">Rename</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const input      = modal.querySelector('#rename-input');
+    const confirmBtn = modal.querySelector('#rename-confirm');
+    const cancelBtn  = modal.querySelector('#modal-cancel');
+    const closeBtn   = modal.querySelector('#modal-close');
+    const progressEl = modal.querySelector('#rename-progress');
+    const statusEl   = modal.querySelector('#rename-status');
+    const errorEl    = modal.querySelector('#rename-error');
+    const footer     = modal.querySelector('#rename-footer');
+
+    // Select filename stem for easy editing
+    const dotIdx = primary.name.lastIndexOf('.');
+    if (dotIdx > 0) input.setSelectionRange(0, dotIdx);
+    input.focus();
+
+    const close = () => modal.remove();
+    closeBtn.addEventListener('click', close);
+    cancelBtn.addEventListener('click', close);
+
+    const doRename = async () => {
+      const newName = sanitizeFilename(input.value.trim());
+      if (!newName || newName === primary.name) { close(); return; }
+
+      confirmBtn.disabled = true;
+      cancelBtn.disabled  = true;
+      closeBtn.disabled   = true;
+      errorEl.style.display   = 'none';
+      progressEl.style.display = 'flex';
+      footer.style.display     = 'none';
+
+      try {
+        const setStatus = text => { statusEl.textContent = text; };
+        const updated = await this.#doRename(primary, variants, newName, setStatus);
+        close();
+        const postNote = updated > 0 ? ` Updated ${updated} post${updated > 1 ? 's' : ''}.` : '';
+        this.toast(`Renamed to ${newName}.${postNote}`, 'success');
+        await this.#loadMedia(container);
+      } catch (e) {
+        errorEl.textContent      = e.message;
+        errorEl.style.display    = 'block';
+        progressEl.style.display = 'none';
+        footer.style.display     = 'flex';
+        confirmBtn.disabled = false;
+        cancelBtn.disabled  = false;
+        closeBtn.disabled   = false;
+      }
+    };
+
+    confirmBtn.addEventListener('click', doRename);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') doRename(); });
+  }
+
+  async #doRename(primary, variants, newName, setStatus) {
+    const dir        = primary.path.substring(0, primary.path.lastIndexOf('/'));
+    const oldBase    = primary.name.replace(/\.[^.]+$/, '');
+    const newBase    = newName.replace(/\.[^.]+$/, '');
+    const allFiles   = [primary, ...variants];
+
+    // Build old→new path map for every file
+    const renames = new Map();
+    for (const f of allFiles) {
+      const newFileName = f.name.replace(oldBase, newBase);
+      const newPath     = `${dir}/${newFileName}`;
+      renames.set(f.path, newPath);
+    }
+
+    // Move files
+    let i = 0;
+    for (const [src, dest] of renames) {
+      setStatus(`Moving file ${++i} of ${renames.size}…`);
+      await this.client.moveFile(src, dest, `Rename: ${src.split('/').pop()} → ${dest.split('/').pop()}`);
+    }
+
+    // Update post/page references
+    setStatus('Updating references in posts…');
+    return this.#updateReferences(renames);
+  }
+
+  async #updateReferences(renames) {
+    const filePaths = new Set();
+
+    const scanDir = async dir => {
+      if (dir == null) return;
+      try {
+        const items = await this.client.listDir(dir || '');
+        items
+          .filter(i => i.type === 'file' && /\.(md|html?)$/i.test(i.name))
+          .forEach(i => filePaths.add(i.path));
+      } catch {}
+    };
+
+    await Promise.all([
+      scanDir(this.config.postsPath),
+      scanDir(this.config.pagesPath ?? null),
+    ]);
+
+    let updated = 0;
+    for (const filePath of filePaths) {
+      try {
+        const file    = await this.client.getFile(filePath);
+        let content   = file.content;
+        let changed   = false;
+        for (const [oldPath, newPath] of renames) {
+          const needle = `/${oldPath}`;
+          if (content.includes(needle)) {
+            content = content.split(needle).join(`/${newPath}`);
+            changed = true;
+          }
+        }
+        if (changed) {
+          await this.client.writeFile(filePath, content, 'Update media references after rename', file.sha);
+          updated++;
+        }
+      } catch {}
+    }
+
+    return updated;
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function groupItems(items) {
+  // Build map: base name → sorted variant items
+  const variantsByBase = new Map();
+  for (const item of items) {
+    const m = item.name.match(VARIANT_RE);
+    if (!m) continue;
+    const base = m[1];
+    if (!variantsByBase.has(base)) variantsByBase.set(base, []);
+    variantsByBase.get(base).push({ item, width: parseInt(m[2]) });
+  }
+  for (const arr of variantsByBase.values()) arr.sort((a, b) => a.width - b.width);
+
+  const groups         = [];
+  const claimedVariants = new Set();
+
+  // Originals first (non-variant files)
+  for (const item of items) {
+    if (VARIANT_RE.test(item.name)) continue;
+    const base     = item.name.replace(/\.[^.]+$/, '');
+    const varArr   = variantsByBase.get(base) ?? [];
+    const variants = varArr.map(v => v.item);
+    variants.forEach(v => claimedVariants.add(v.name));
+    groups.push({ primary: item, variants });
+  }
+
+  // Orphaned variant groups (original file was deleted / never existed)
+  for (const arr of variantsByBase.values()) {
+    const unclaimed = arr.filter(v => !claimedVariants.has(v.item.name));
+    if (!unclaimed.length) continue;
+    const primary  = unclaimed.at(-1).item;          // largest as representative
+    const variants = unclaimed.slice(0, -1).map(v => v.item);
+    groups.push({ primary, variants });
+  }
+
+  return groups;
+}
+
+function chipLabel(item) {
+  const m = item.name.match(/-(\d+)w\.\w+$/);
+  return m ? `${m[1]}w` : 'orig';
 }
 
 async function resizeImage(file, maxWidth, quality) {

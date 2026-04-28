@@ -744,17 +744,22 @@ export class EditorView {
       if (!preview) return;
       const [marked, DOMPurify] = await Promise.all([getMarked(), getPurify()]);
       const html = DOMPurify.sanitize(marked.parse(markdown));
-      const base = `https://raw.githubusercontent.com/${this.config.owner}/${this.config.repo}/${this.config.branch}`;
-      preview.innerHTML = html.replace(
-        /(<img\b[^>]*?\ssrc=)(["'])(\/.+?)\2/gi,
-        (_, tag, q, path) => {
-          // Use local blob URL if available (e.g. freshly pasted/optimised image not yet on CDN)
-          const blobUrl = this.#blobUrls.get(path);
-          return blobUrl
-            ? `${tag}${q}${blobUrl}${q}`
-            : `${tag}${q}${base}${path}${q}`;
-        },
-      );
+      const base    = `https://raw.githubusercontent.com/${this.config.owner}/${this.config.repo}/${this.config.branch}`;
+      const resolve = path => this.#blobUrls.get(path) ?? `${base}${path}`;
+      preview.innerHTML = html
+        // Rewrite <img src="/...">
+        .replace(
+          /(<img\b[^>]*?\ssrc=)(["'])(\/.+?)\2/gi,
+          (_, tag, q, path) => `${tag}${q}${resolve(path)}${q}`,
+        )
+        // Rewrite srcset="..." — handles <source srcset> from <picture> elements
+        .replace(
+          /(\bsrcset=)(["'])([^"']+)\2/gi,
+          (_, attr, q, srcset) => {
+            const rewritten = srcset.replace(/(\/[^\s,]+)/g, path => resolve(path));
+            return `${attr}${q}${rewritten}${q}`;
+          },
+        );
     } catch { /* ignore */ }
   }
 

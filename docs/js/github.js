@@ -88,6 +88,19 @@ export class GitHubClient {
     });
   }
 
+  async moveFile(srcPath, destPath, message) {
+    const data = await this.#req(
+      `/repos/${this.#owner}/${this.#repo}/contents/${srcPath}?ref=${this.#branch}`
+    );
+    const base64 = data.content.replace(/\n/g, '');
+    const srcSha = data.sha;
+    await this.#req(`/repos/${this.#owner}/${this.#repo}/contents/${destPath}`, {
+      method: 'PUT',
+      body: JSON.stringify({ message, content: base64, branch: this.#branch }),
+    });
+    await this.deleteFile(srcPath, srcSha, message);
+  }
+
   async deleteFile(path, sha, message) {
     return this.#req(`/repos/${this.#owner}/${this.#repo}/contents/${path}`, {
       method: 'DELETE',
