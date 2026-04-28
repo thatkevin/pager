@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy — PAGER</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Press+Start+2P&family=VT323:wght@400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:         #0a0a0a;
+      --surface:    #111111;
+      --border:     #232323;
+      --text:       #ebebeb;
+      --text-muted: #777;
+      --text-dim:   #444;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13.5px;
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 60px 28px 80px;
+    }
+    .back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-decoration: none;
+      margin-bottom: 40px;
+      transition: color 120ms ease;
+    }
+    .back:hover { color: var(--text-muted); }
+    .wordmark {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-family: 'VT323', monospace;
+      font-size: 36px;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      margin-bottom: 32px;
+    }
+    section { margin-bottom: 32px; }
+    h2 {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+    p {
+      color: var(--text-muted);
+      font-size: 13.5px;
+      line-height: 1.7;
+      margin-bottom: 10px;
+    }
+    p:last-child { margin-bottom: 0; }
+    code {
+      font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+      font-size: 12px;
+      background: #161616;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 1px 5px;
+      color: var(--text);
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 32px 0;
+    }
+    .note {
+      padding: 14px 16px;
+      background: #111;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      font-size: 12.5px;
+      color: var(--text-dim);
+      line-height: 1.65;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="./">← Back to PAGER</a>
+
+    <div class="wordmark">PAGER</div>
+    <h1>Privacy</h1>
+
+    <section>
+      <h2>The short version</h2>
+      <p>PAGER does not store, collect, or transmit any of your data to any server we control. Everything stays in your browser.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section>
+      <h2>Your GitHub token</h2>
+      <p>When you sign in, your GitHub personal access token (or the OAuth token obtained via GitHub login) is stored in your browser's <code>localStorage</code> on your device only.</p>
+      <p>It is sent directly to <code>api.github.com</code> when you read or write files. It never passes through any PAGER server.</p>
+    </section>
+
+    <section>
+      <h2>Your content</h2>
+      <p>Posts, pages, and media you create or edit are read from and written directly to your GitHub repository via the GitHub API. PAGER has no database, no file storage, and no backend that touches your content.</p>
+    </section>
+
+    <section>
+      <h2>OAuth (GitHub login)</h2>
+      <p>If you use the "Login with GitHub" option, your browser is redirected to GitHub to authorise the app. GitHub then provides an authorisation code, which is exchanged for an access token via a small serverless worker. That worker performs the exchange and returns the token to your browser — it does not log, store, or retain anything.</p>
+    </section>
+
+    <section>
+      <h2>Cookies and tracking</h2>
+      <p>PAGER uses no cookies, no analytics, no tracking pixels, and no third-party scripts beyond Google Fonts for typography.</p>
+    </section>
+
+    <hr class="divider">
+
+    <div class="note">
+      If you want to remove PAGER's access to your GitHub account entirely, revoke the token from <strong>GitHub → Settings → Developer settings → Personal access tokens</strong>, or from <strong>GitHub → Settings → Applications → Authorized OAuth Apps</strong>.
+    </div>
+  </div>
+</body>
+</html>
