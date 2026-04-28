@@ -18,6 +18,52 @@ const MEDIA_CANDIDATES = [
   'uploads',
 ];
 
+const PAGES_CANDIDATES = [
+  '_pages',
+  'pages',
+  '_docs',
+  'docs',
+  'content/pages',
+];
+
+// Layouts for common gem-based themes whose _layouts/ dir is empty locally.
+const THEME_LAYOUTS = {
+  'minima':                ['home', 'post', 'page', 'default'],
+  'minimal-mistakes':      ['home', 'single', 'page', 'archive', 'search', 'posts', 'default'],
+  'minimal-mistakes-jekyll': ['home', 'single', 'page', 'archive', 'search', 'posts', 'default'],
+  'just-the-docs':         ['default', 'page', 'home', 'minimal'],
+  'chirpy':                ['home', 'post', 'page', 'archives', 'categories', 'tags', 'about', 'default'],
+  'beautiful-jekyll':      ['home', 'post', 'page', 'minimal', 'default'],
+  'al-folio':              ['about', 'post', 'page', 'cv', 'bib', 'default'],
+  'academic-pages':        ['archive', 'single', 'talk', 'post', 'page', 'default'],
+  'hacker':                ['default'],
+  'cayman':                ['default'],
+  'architect':             ['default'],
+  'slate':                 ['default'],
+  'midnight':              ['default'],
+  'merlot':                ['default'],
+  'modernist':             ['default'],
+  'leap-day':              ['default'],
+  'time-machine':          ['default'],
+};
+
+function parseConfigYml(text) {
+  const scalar = key => {
+    const m = text.match(new RegExp(`^${key}:\\s*["']?([^"'\\n]+?)["']?\\s*$`, 'm'));
+    return m ? m[1].trim() : null;
+  };
+  // remote_theme is often "user/repo" or "user/repo@ref" — extract the repo slug as theme name
+  const remoteTheme = scalar('remote_theme');
+  const themeName   = scalar('theme')
+    ?? (remoteTheme ? remoteTheme.split('/').pop().split('@')[0].replace(/-jekyll$/, '') : null);
+  return {
+    theme:          themeName,
+    baseurl:        scalar('baseurl') ?? '',
+    url:            scalar('url') ?? '',
+    collectionsDir: scalar('collections_dir') ?? '',
+  };
+}
+
 export class SetupView {
   constructor(client, config, { toast, onDone, initialValues = null }) {
     this.client        = client;
@@ -70,6 +116,11 @@ export class SetupView {
               <input type="text" id="setup-posts-path" value="${iv?.postsPath ?? ''}" autocomplete="off">
             </div>
             <div class="field">
+              <label>Pages folder <span class="field-hint">(HTML &amp; standalone pages)</span></label>
+              <input type="text" id="setup-pages-path" value="${iv?.pagesPath ?? ''}"
+                     placeholder="e.g. _pages — leave blank if pages live at repo root" autocomplete="off">
+            </div>
+            <div class="field">
               <label>Media folder</label>
               <input type="text" id="setup-media-path" value="${iv?.mediaPath ?? ''}" autocomplete="off">
             </div>
@@ -108,7 +159,6 @@ export class SetupView {
 
     el.querySelector('#setup-confirm-btn').addEventListener('click', () => this._confirm());
 
-    // If editing existing config, mark it as selected without re-detecting
     if (this.initialValues) {
       const { owner, repo } = this.initialValues;
       this.selected = { full_name: `${owner}/${repo}` };
@@ -189,13 +239,11 @@ export class SetupView {
     const detectingEl = this._el.querySelector('#setup-detecting');
     detectingEl.style.display = 'inline';
     this._el.querySelector('#setup-confirm-btn').disabled = true;
-
     this._el.querySelector('#setup-branch').value = defaultBranch;
 
     const [owner, repo] = fullName.split('/');
     const tempClient    = this.client.withRepo(owner, repo, defaultBranch);
-
-    const probe = async path => {
+    const probe         = async path => {
       try { await tempClient.listDir(path); return true; } catch { return false; }
     };
 
@@ -207,29 +255,39 @@ export class SetupView {
     };
 
     try {
-      const [postsResults, mediaResults, layoutFiles] = await Promise.all([
+      const [postsResults, mediaResults, pagesResults, layoutFiles, configYmlText] = await Promise.all([
         Promise.all(POSTS_CANDIDATES.map(p => probe(p).then(ok => ok ? p : null))),
         Promise.all(MEDIA_CANDIDATES.map(p => probe(p).then(ok => ok ? p : null))),
+        Promise.all(PAGES_CANDIDATES.map(p => probe(p).then(ok => ok ? p : null))),
         tempClient.listDir('_layouts').catch(() => []),
+        tempClient.getConfigYml().catch(() => null),
       ]);
 
+      const cfg       = configYmlText ? parseConfigYml(configYmlText) : {};
       const postsPath = postsResults.find(Boolean) ?? fallback.postsPath;
       const mediaPath = mediaResults.find(Boolean) ?? fallback.mediaPath;
+      const pagesPath = pagesResults.find(Boolean) ?? '';
 
       let layouts = fallback.layouts;
       if (Array.isArray(layoutFiles) && layoutFiles.length) {
+        // Local _layouts/ directory found — use those
         const detected = layoutFiles
           .filter(f => f.type === 'file' && f.name.match(/\.(html|liquid|erb|md)$/))
           .map(f => f.name.replace(/\.[^.]+$/, ''));
         if (detected.length) layouts = detected;
+      } else if (cfg.theme && THEME_LAYOUTS[cfg.theme]) {
+        // Gem-based theme: _layouts/ is hidden in the gem, use the known layout list
+        layouts = THEME_LAYOUTS[cfg.theme];
       }
 
       this._el.querySelector('#setup-posts-path').value = postsPath;
       this._el.querySelector('#setup-media-path').value = mediaPath;
+      this._el.querySelector('#setup-pages-path').value = pagesPath;
       this._el.querySelector('#setup-layouts').value    = layouts.join(', ');
     } catch {
       this._el.querySelector('#setup-posts-path').value = fallback.postsPath;
       this._el.querySelector('#setup-media-path').value = fallback.mediaPath;
+      this._el.querySelector('#setup-pages-path').value = '';
       this._el.querySelector('#setup-layouts').value    = fallback.layouts.join(', ');
     }
 
@@ -243,14 +301,15 @@ export class SetupView {
       this.toast('Select a repository first', 'error');
       return;
     }
-    const branch       = this._el.querySelector('#setup-branch').value.trim()     || 'main';
-    const postsPath    = this._el.querySelector('#setup-posts-path').value.trim() || '_posts';
-    const mediaPath    = this._el.querySelector('#setup-media-path').value.trim() || 'assets/images';
-    const layoutRaw    = this._el.querySelector('#setup-layouts').value.trim();
-    const layouts      = layoutRaw ? layoutRaw.split(',').map(s => s.trim()).filter(Boolean) : ['post', 'page', 'default'];
-    const maxImgRaw    = parseInt(this._el.querySelector('#setup-max-img-width').value, 10);
+    const branch        = this._el.querySelector('#setup-branch').value.trim()      || 'main';
+    const postsPath     = this._el.querySelector('#setup-posts-path').value.trim()  || '_posts';
+    const pagesPath     = this._el.querySelector('#setup-pages-path').value.trim();
+    const mediaPath     = this._el.querySelector('#setup-media-path').value.trim()  || 'assets/images';
+    const layoutRaw     = this._el.querySelector('#setup-layouts').value.trim();
+    const layouts       = layoutRaw ? layoutRaw.split(',').map(s => s.trim()).filter(Boolean) : ['post', 'page', 'default'];
+    const maxImgRaw     = parseInt(this._el.querySelector('#setup-max-img-width').value, 10);
     const maxImageWidth = maxImgRaw > 0 ? maxImgRaw : null;
     const [owner, repo] = this.selected.full_name.split('/');
-    this.onDone({ owner, repo, branch, postsPath, mediaPath, layouts, maxImageWidth });
+    this.onDone({ owner, repo, branch, postsPath, pagesPath, mediaPath, layouts, maxImageWidth });
   }
 }

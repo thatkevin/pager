@@ -55,6 +55,16 @@ export function dateToIso(date) {
   return match ? match[1] : new Date().toISOString().slice(0, 10);
 }
 
+export function filenameFromPage(fm, ext = 'html') {
+  const slug = (fm.title || 'page')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-') || 'page';
+  return `${slug}.${ext}`;
+}
+
 export function filenameFromPost(fm) {
   const date = dateToIso(fm.date || new Date());
   const slug = (fm.title || 'untitled')

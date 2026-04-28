@@ -2,6 +2,7 @@ import { CONFIG }      from './config.js';
 import { GitHubClient } from './github.js';
 import { LoginView }    from './views/login.js';
 import { PostsView }    from './views/posts.js';
+import { PagesView }    from './views/pages.js';
 import { EditorView }   from './views/editor.js';
 import { MediaView }    from './views/media.js';
 import { SetupView }    from './views/setup.js';
@@ -134,12 +135,21 @@ function renderView(container, route, params) {
       });
       break;
 
+    case 'pages':
+      view = new PagesView(state.client, cfg, {
+        toast,
+        onEdit: path     => navigate('editor', { path, backRoute: 'pages' }),
+        onNew:  fileType => navigate('editor', { path: null, fileType, backRoute: 'pages' }),
+      });
+      break;
+
     case 'editor':
       view = new EditorView(state.client, cfg, {
         toast,
-        path:    params.path    ?? null,
-        draftId: params.draftId ?? null,
-        onBack:  () => navigate('posts'),
+        path:     params.path     ?? null,
+        draftId:  params.draftId  ?? null,
+        fileType: params.fileType ?? null,
+        onBack:   () => navigate(params.backRoute ?? 'posts'),
         onMediaPick: callback => showMediaPicker(callback),
       });
       break;
@@ -226,6 +236,17 @@ function renderShell() {
             </button>
           </div>
           <div class="nav-section">
+            <div class="nav-section-label">Pages</div>
+            <button class="nav-item" data-route="pages">
+              ${iconPages()}
+              Pages
+            </button>
+            <button class="nav-item" data-route="editor" data-new="1" data-filetype="html">
+              ${iconNew()}
+              New page
+            </button>
+          </div>
+          <div class="nav-section">
             <div class="nav-section-label">Assets</div>
             <button class="nav-item" data-route="media">
               ${iconMedia()}
@@ -253,6 +274,10 @@ function renderShell() {
         ${iconPost()}
         <span>Posts</span>
       </button>
+      <button class="mobile-nav-item" data-route="pages">
+        ${iconPages()}
+        <span>Pages</span>
+      </button>
       <button class="mobile-nav-item" data-route="editor" data-new="1">
         ${iconNew()}
         <span>New</span>
@@ -268,9 +293,14 @@ function renderShell() {
 
   document.querySelectorAll('.nav-item[data-route], .mobile-nav-item[data-route], .user-repo[data-route]').forEach(el => {
     el.addEventListener('click', () => {
-      const route = el.dataset.route;
-      const isNew = el.dataset.new === '1';
-      navigate(route, isNew ? { path: null } : {});
+      const route    = el.dataset.route;
+      const isNew    = el.dataset.new === '1';
+      const fileType = el.dataset.filetype ?? null;
+      if (isNew) {
+        navigate(route, { path: null, fileType, backRoute: fileType ? 'pages' : 'posts' });
+      } else {
+        navigate(route, {});
+      }
     });
   });
 }
@@ -324,6 +354,12 @@ function iconPost() {
 function iconNew() {
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>`;
+}
+
+function iconPages() {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/>
   </svg>`;
 }
 

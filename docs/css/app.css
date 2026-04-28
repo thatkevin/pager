@@ -766,6 +766,34 @@ select {
 
 .editor-preview em { color: var(--text-muted); }
 
+.html-preview-frame {
+  flex: 1;
+  border: none;
+  background: #fff;
+  color-scheme: light;
+}
+
+.preview-note {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-left: 6px;
+  opacity: 0.7;
+}
+
+.file-type-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 1px 5px;
+  text-transform: lowercase;
+}
+
 /* ── Media library ─────────────────────────────────────── */
 .media-view {
   display: flex;

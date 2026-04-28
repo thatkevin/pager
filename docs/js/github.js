@@ -106,6 +106,13 @@ export class GitHubClient {
     return `https://raw.githubusercontent.com/${this.#owner}/${this.#repo}/${this.#branch}/${path}`;
   }
 
+  async getConfigYml() {
+    try {
+      const f = await this.getFile('_config.yml');
+      return f.content;
+    } catch { return null; }
+  }
+
   withRepo(owner, repo, branch) {
     return new GitHubClient(this.#token, owner, repo, branch);
   }

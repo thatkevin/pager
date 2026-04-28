@@ -1,18 +1,20 @@
-import { parseFrontmatter, buildPostContent, filenameFromPost, dateToIso } from '../jekyll.js';
+import { parseFrontmatter, buildPostContent, filenameFromPost, filenameFromPage, dateToIso } from '../jekyll.js';
 import { saveDraft, loadDraft, deleteDraft } from '../drafts.js';
 
-const MARKED_URL    = 'https://esm.sh/marked@13';
-const PURIFY_URL    = 'https://esm.sh/dompurify@3';
-let markedPromise   = null;
-let purifyPromise   = null;
-const getMarked  = () => markedPromise  ??= import(MARKED_URL).then(m => m.marked);
-const getPurify  = () => purifyPromise  ??= import(PURIFY_URL).then(m => m.default);
+const MARKED_URL   = 'https://esm.sh/marked@13';
+const PURIFY_URL   = 'https://esm.sh/dompurify@3';
+let markedPromise  = null;
+let purifyPromise  = null;
+const getMarked = () => markedPromise  ??= import(MARKED_URL).then(m => m.marked);
+const getPurify = () => purifyPromise  ??= import(PURIFY_URL).then(m => m.default);
 
 export class EditorView {
-  constructor(client, config, { path, draftId = null, toast, onBack, onMediaPick }) {
+  constructor(client, config, { path, draftId = null, toast, onBack, onMediaPick, fileType = null, isPage = false }) {
     this.client      = client;
     this.config      = config;
     this.path        = path;
+    this.fileType    = fileType;
+    this.isPage      = isPage || fileType === 'html' || (path && /\.html?$/i.test(path));
     this.draftId     = draftId ?? (path || `new-${Date.now()}`);
     this.toast       = toast;
     this.onBack      = onBack;
@@ -27,12 +29,26 @@ export class EditorView {
 
   #pollTimer = null;
 
+  get #isHtmlFile() {
+    return this.fileType === 'html' || (!!this.path && /\.html?$/i.test(this.path));
+  }
+
   render() {
+    const label       = this.#isHtmlFile ? 'HTML' : 'Markdown';
+    const previewPane = this.#isHtmlFile
+      ? `<iframe class="html-preview-frame" id="html-preview-frame"
+                 sandbox="allow-same-origin" title="Page preview"></iframe>`
+      : `<div class="editor-preview" id="md-preview"></div>`;
+    const previewLabel = this.#isHtmlFile
+      ? `Preview <span class="preview-note">(scripts stripped · Liquid not processed)</span>`
+      : 'Preview';
+    const backLabel = this.isPage ? '← Pages' : '← Posts';
+
     return `
       <div class="editor-view">
         <div class="editor-topbar">
           <div class="breadcrumb">
-            <button class="btn btn-ghost btn-sm" id="back-btn">← Posts</button>
+            <button class="btn btn-ghost btn-sm" id="back-btn">${backLabel}</button>
             <span id="filename-label" class="mono" style="color:var(--text-dim); font-size:11px"></span>
           </div>
           <div class="topbar-right">
@@ -52,17 +68,19 @@ export class EditorView {
         <div class="editor-body" id="editor-body" data-pane="md">
           <div class="editor-textarea-wrap">
             <div class="editor-pane-label">
-              Markdown
+              ${label}
               <div class="pane-tabs-mobile">
                 <button class="pane-tab active" data-pane="md">Write</button>
                 <button class="pane-tab" data-pane="preview">Preview</button>
               </div>
             </div>
-            <textarea class="editor-textarea" id="md-editor" placeholder="Start writing…" spellcheck="true"></textarea>
+            <textarea class="editor-textarea" id="md-editor"
+                      placeholder="Start writing…"
+                      spellcheck="${this.#isHtmlFile ? 'false' : 'true'}"></textarea>
           </div>
           <div class="editor-preview-wrap">
-            <div class="editor-pane-label">Preview</div>
-            <div class="editor-preview" id="md-preview"></div>
+            <div class="editor-pane-label">${previewLabel}</div>
+            ${previewPane}
           </div>
         </div>
       </div>
@@ -97,11 +115,9 @@ export class EditorView {
     const status     = container.querySelector('#save-status');
 
     try {
-      // Check localStorage for a draft of this post first
       const draft = loadDraft(this.draftId);
 
       if (draft) {
-        // Restore draft — if it's an existing post we still need the SHA from GitHub
         if (this.path) {
           const file = await this.client.getFile(this.path);
           this.sha = file.sha;
@@ -112,7 +128,10 @@ export class EditorView {
         const t   = new Date(draft.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         status.textContent = `Draft · saved ${t}`;
         container.querySelector('#filename-label').textContent =
-          this.path ? this.path.split('/').pop() : (draft.fm.title ? filenameFromPost(draft.fm) : 'new post');
+          this.path ? this.path.split('/').pop()
+            : (draft.fm.title
+                ? (this.#isHtmlFile ? filenameFromPage(draft.fm, 'html') : filenameFromPost(draft.fm))
+                : (this.#isHtmlFile ? 'new page' : 'new post'));
 
       } else if (this.path) {
         const file   = await this.client.getFile(this.path);
@@ -123,14 +142,16 @@ export class EditorView {
         this.tags = Array.isArray(this.fm.categories) ? [...this.fm.categories] : [];
         container.querySelector('#filename-label').textContent = this.path.split('/').pop();
 
+      } else if (this.#isHtmlFile) {
+        this.fm   = { title: '', layout: 'page', description: '', permalink: '' };
+        this.body = '---\n<!-- page content here -->\n';
+        container.querySelector('#filename-label').textContent = 'new page';
       } else {
-        this.fm = {
-          title: '', date: new Date().toISOString(), layout: 'post',
-          categories: [], description: '', thumbnail: '', image: '',
-        };
+        this.fm   = { title: '', date: new Date().toISOString(), layout: 'post',
+                      categories: [], description: '', thumbnail: '', image: '' };
         this.tags = [];
         this.body = '';
-        container.querySelector('#filename-label').textContent = 'new post';
+        container.querySelector('#filename-label').textContent = this.isPage ? 'new page' : 'new post';
       }
 
       meta.innerHTML = this.#metaFormHtml();
@@ -140,7 +161,7 @@ export class EditorView {
 
       const textarea = container.querySelector('#md-editor');
       textarea.value = this.body;
-      this.#updatePreview(container, this.body);
+      this.#refreshPreview(container, this.body);
 
       let previewTimer;
       textarea.addEventListener('input', () => {
@@ -148,7 +169,11 @@ export class EditorView {
         this.dirty = true;
         this.#setStatus(container, 'Unsaved changes');
         clearTimeout(previewTimer);
-        previewTimer = setTimeout(() => this.#updatePreview(container, this.body), 300);
+        if (this.#isHtmlFile) {
+          this.#updateHtmlPreview(container, this.body);
+        } else {
+          previewTimer = setTimeout(() => this.#updatePreview(container, this.body), 300);
+        }
       });
 
       textarea.addEventListener('paste', e => this.#handlePaste(e, textarea, container));
@@ -163,17 +188,33 @@ export class EditorView {
     }
   }
 
+  #refreshPreview(container, content) {
+    if (this.#isHtmlFile) {
+      this.#updateHtmlPreview(container, content);
+    } else {
+      this.#updatePreview(container, content);
+    }
+  }
+
   // ── Form helpers ───────────────────────────────────────────────────────────
 
   #collectFm(container) {
+    if (this.#isHtmlFile || this.isPage) {
+      return {
+        title:       container.querySelector('#fm-title')?.value       || this.fm.title,
+        layout:      container.querySelector('#fm-layout')?.value      || this.fm.layout,
+        description: container.querySelector('#fm-desc')?.value        || this.fm.description,
+        permalink:   container.querySelector('#fm-permalink')?.value   || this.fm.permalink || undefined,
+      };
+    }
     return {
-      title:       container.querySelector('#fm-title')?.value       || this.fm.title,
-      date:        container.querySelector('#fm-date')?.value        || this.fm.date,
-      layout:      container.querySelector('#fm-layout')?.value      || this.fm.layout,
+      title:       container.querySelector('#fm-title')?.value        || this.fm.title,
+      date:        container.querySelector('#fm-date')?.value         || this.fm.date,
+      layout:      container.querySelector('#fm-layout')?.value       || this.fm.layout,
       categories:  this.tags,
-      description: container.querySelector('#fm-desc')?.value       || this.fm.description,
-      thumbnail:   container.querySelector('#fm-thumb')?.value      || this.fm.thumbnail,
-      image:       container.querySelector('#fm-image')?.value      || this.fm.image,
+      description: container.querySelector('#fm-desc')?.value         || this.fm.description,
+      thumbnail:   container.querySelector('#fm-thumb')?.value        || this.fm.thumbnail,
+      image:       container.querySelector('#fm-image')?.value        || this.fm.image,
     };
   }
 
@@ -211,15 +252,32 @@ export class EditorView {
     this.#setStatus(container, 'Publishing…', true);
 
     try {
-      const fm       = this.#collectFm(container);
-      const content  = buildPostContent(fm, this.body);
-      const filename = this.path ? this.path.split('/').pop() : filenameFromPost(fm);
-      const filePath = this.path || `${this.config.postsPath}/${filename}`;
-      const message  = this.path
-        ? `Update post: ${fm.title || filename}`
-        : `Add post: ${fm.title || filename}`;
+      const fm = this.#collectFm(container);
 
-      const res  = await this.client.writeFile(filePath, content, message, this.sha);
+      let filename, filePath;
+      if (this.path) {
+        filename = this.path.split('/').pop();
+        filePath = this.path;
+      } else if (this.#isHtmlFile) {
+        filename = filenameFromPage(fm, 'html');
+        const base = this.config.pagesPath || '';
+        filePath = base ? `${base}/${filename}` : filename;
+      } else if (this.isPage) {
+        filename = filenameFromPage(fm, 'md');
+        const base = this.config.pagesPath || '';
+        filePath = base ? `${base}/${filename}` : filename;
+      } else {
+        filename = filenameFromPost(fm);
+        filePath = `${this.config.postsPath}/${filename}`;
+      }
+
+      const kind    = this.isPage || this.#isHtmlFile ? 'page' : 'post';
+      const message = this.path
+        ? `Update ${kind}: ${fm.title || filename}`
+        : `Add ${kind}: ${fm.title || filename}`;
+
+      const content = buildPostContent(fm, this.body);
+      const res     = await this.client.writeFile(filePath, content, message, this.sha);
       this.sha   = res.content.sha;
       this.path  = filePath;
       this.fm    = fm;
@@ -254,10 +312,11 @@ export class EditorView {
     const name = `paste-${Date.now()}.${ext}`;
     const path = `${this.config.mediaPath}/${name}`;
 
-    // Insert placeholder at cursor so the user sees immediate feedback
     const start       = textarea.selectionStart;
     const end         = textarea.selectionEnd;
-    const placeholder = `![uploading ${name}…]()`;
+    const placeholder = this.#isHtmlFile
+      ? `<img src="" alt="${name} (uploading…)">`
+      : `![uploading ${name}…]()`;
     textarea.value    = textarea.value.slice(0, start) + placeholder + textarea.value.slice(end);
     textarea.selectionStart = textarea.selectionEnd = start + placeholder.length;
     this.body  = textarea.value;
@@ -266,12 +325,14 @@ export class EditorView {
     this.#setStatus(container, 'Uploading image…', { spinner: true });
 
     try {
-      const resized = await this.#resizeImage(blob);
+      const resized  = await this.#resizeImage(blob);
       await this.client.uploadBinary(path, resized, `Upload pasted image: ${name}`);
-      const md          = `![${name}](/${path})`;
-      textarea.value    = textarea.value.replace(placeholder, md);
-      this.body         = textarea.value;
-      this.#updatePreview(container, this.body);
+      const insertion = this.#isHtmlFile
+        ? `<img src="/${path}" alt="${name}">`
+        : `![${name}](/${path})`;
+      textarea.value = textarea.value.replace(placeholder, insertion);
+      this.body      = textarea.value;
+      this.#refreshPreview(container, this.body);
       this.#setStatus(container, 'Image uploaded');
       this.toast('Image uploaded.', 'success');
     } catch (err) {
@@ -337,11 +398,45 @@ export class EditorView {
   // ── Meta form ──────────────────────────────────────────────────────────────
 
   #metaFormHtml() {
+    return (this.#isHtmlFile || this.isPage) ? this.#pageMetaHtml() : this.#postMetaHtml();
+  }
+
+  #pageMetaHtml() {
+    const f      = this.fm;
+    const layout = f.layout || 'page';
+    const layouts = this.config.layouts ?? ['post', 'page', 'default'];
+    const layoutOpts = layouts
+      .map(l => `<option value="${l}" ${l === layout ? 'selected' : ''}>${l}</option>`)
+      .join('');
+    return `
+      <div class="editor-meta-top">
+        <div class="field field-title">
+          <label>Title</label>
+          <input type="text" id="fm-title" value="${escHtml(f.title || '')}" placeholder="Page title">
+        </div>
+        <div class="field field-layout">
+          <label>Layout</label>
+          <select id="fm-layout">${layoutOpts}</select>
+        </div>
+        <div class="field">
+          <label>Permalink</label>
+          <input type="text" id="fm-permalink" value="${escHtml(f.permalink || '')}" placeholder="/about/">
+        </div>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <input type="text" id="fm-desc" value="${escHtml(f.description || '')}" placeholder="Short description">
+      </div>
+    `;
+  }
+
+  #postMetaHtml() {
     const f      = this.fm;
     const date   = f.date ? dateToIso(f.date) : new Date().toISOString().slice(0, 10);
     const layout = f.layout || 'post';
+    const layouts = this.config.layouts ?? ['post', 'page', 'default'];
 
-    const layoutOpts = this.config.layouts
+    const layoutOpts = layouts
       .map(l => `<option value="${l}" ${l === layout ? 'selected' : ''}>${l}</option>`)
       .join('');
 
@@ -401,38 +496,47 @@ export class EditorView {
         this.dirty   = true;
         this.#setStatus(container, 'Unsaved changes');
         if (key === 'title') {
-          container.querySelector('#filename-label').textContent =
-            this.path ? this.path.split('/').pop() : filenameFromPost(this.fm);
+          const name = this.path ? this.path.split('/').pop()
+            : this.#isHtmlFile ? filenameFromPage(this.fm, 'html')
+            : this.isPage      ? filenameFromPage(this.fm, 'md')
+            : filenameFromPost(this.fm);
+          container.querySelector('#filename-label').textContent = name;
         }
       });
     };
 
-    watch('fm-title', 'title');
-    watch('fm-date',  'date');
-    watch('fm-layout','layout');
-    watch('fm-desc',  'description');
-    watch('fm-thumb', 'thumbnail');
-    watch('fm-image', 'image');
-
-    this.#bindTagsInput(container);
-
-    container.querySelectorAll('.media-pick-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const targetId = btn.dataset.target;
-        this.onMediaPick(path => {
-          const input = container.querySelector(`#${targetId}`);
-          input.value = `/${path}`;
-          this.fm[targetId === 'fm-thumb' ? 'thumbnail' : 'image'] = `/${path}`;
-          this.dirty = true;
-          this.#setStatus(container, 'Unsaved changes');
+    if (this.#isHtmlFile || this.isPage) {
+      watch('fm-title',     'title');
+      watch('fm-layout',    'layout');
+      watch('fm-desc',      'description');
+      watch('fm-permalink', 'permalink');
+    } else {
+      watch('fm-title',  'title');
+      watch('fm-date',   'date');
+      watch('fm-layout', 'layout');
+      watch('fm-desc',   'description');
+      watch('fm-thumb',  'thumbnail');
+      watch('fm-image',  'image');
+      this.#bindTagsInput(container);
+      container.querySelectorAll('.media-pick-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const targetId = btn.dataset.target;
+          this.onMediaPick(path => {
+            const input = container.querySelector(`#${targetId}`);
+            input.value = `/${path}`;
+            this.fm[targetId === 'fm-thumb' ? 'thumbnail' : 'image'] = `/${path}`;
+            this.dirty = true;
+            this.#setStatus(container, 'Unsaved changes');
+          });
         });
       });
-    });
+    }
   }
 
   #bindTagsInput(container) {
     const wrap  = container.querySelector('#tags-wrap');
     const input = container.querySelector('#tags-input');
+    if (!wrap || !input) return;
 
     const addTag = val => {
       const tag = val.trim();
@@ -479,6 +583,8 @@ export class EditorView {
     span?.remove();
   }
 
+  // ── Markdown preview ────────────────────────────────────────────────────────
+
   async #updatePreview(container, markdown) {
     try {
       const preview = container.querySelector('#md-preview');
@@ -486,16 +592,53 @@ export class EditorView {
       const [marked, DOMPurify] = await Promise.all([getMarked(), getPurify()]);
       const html = DOMPurify.sanitize(marked.parse(markdown));
       const base = `https://raw.githubusercontent.com/${this.config.owner}/${this.config.repo}/${this.config.branch}`;
-      // Rewrite root-relative image src values to the raw GitHub URL so
-      // images resolve correctly when previewing on a different origin.
       preview.innerHTML = html.replace(
         /(<img\b[^>]*?\ssrc=)(["'])(\/.+?)\2/gi,
         (_, tag, q, path) => `${tag}${q}${base}${path}${q}`,
       );
     } catch { /* ignore */ }
   }
+
+  // ── HTML preview ────────────────────────────────────────────────────────────
+
+  #updateHtmlPreview(container, html) {
+    const frame = container.querySelector('#html-preview-frame');
+    if (!frame) return;
+    const rawBase = `https://raw.githubusercontent.com/${this.config.owner}/${this.config.repo}/${this.config.branch}`;
+    frame.srcdoc  = buildSafeHtmlPreview(html, rawBase);
+  }
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function escHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildSafeHtmlPreview(content, rawBase) {
+  let html = content
+    // Strip Liquid control tags {% %}
+    .replace(/\{%-?[\s\S]*?-?%\}/g, '')
+    // Replace Liquid output {{ }} with a dim placeholder
+    .replace(/\{\{-?[\s\S]*?-?\}\}/g, '<span style="opacity:.35;font-style:italic">[dynamic]</span>')
+    // Remove script elements entirely
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    // Remove inline event handlers
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
+
+  // Rewrite root-relative src/href/action to the raw GitHub URL
+  html = html.replace(
+    /(\b(?:src|href|action)\s*=\s*["'])(\/[^"'#\s][^"']*)(["'])/gi,
+    (_, attr, path, q) => `${attr}${rawBase}${path}${q}`,
+  );
+
+  // Inject a <base> tag so any remaining relative paths resolve correctly
+  const baseTag = `<base href="${rawBase}/">`;
+  if (/<head\b[^>]*>/i.test(html)) {
+    html = html.replace(/<head\b[^>]*>/i, m => `${m}\n  ${baseTag}`);
+  } else {
+    html = `<head>${baseTag}</head>\n` + html;
+  }
+
+  return html;
 }
