@@ -160,7 +160,7 @@ export class EditorView {
       } else if (this.#isHtmlFile) {
         this.fm   = { title: '', layout: 'page', description: '', permalink: '' };
         this.body = '<!-- page content here -->\n';
-        this.useFrontmatter = false;
+        this.useFrontmatter = true;
         container.querySelector('#filename-label').textContent = 'new page';
       } else {
         this.fm   = { title: '', date: new Date().toISOString(), layout: 'post',
@@ -296,6 +296,7 @@ export class EditorView {
         filename = this.path.split('/').pop();
         filePath = this.path;
       } else if (this.#isHtmlFile) {
+        if (!fm?.title) throw new Error('Add a title before publishing.');
         filename = filenameFromPage(fm, 'html');
         const base = this.config.pagesPath || '';
         filePath = base ? `${base}/${filename}` : filename;
@@ -430,11 +431,17 @@ export class EditorView {
     optimiseBtn.disabled = true;
     draftBtn.disabled    = true;
     publishBtn.disabled  = true;
-    this.#setStatus(container, 'Optimising images…', { spinner: true });
+
+    const selStart   = this.#textarea.selectionStart;
+    const selEnd     = this.#textarea.selectionEnd;
+    const hasSelection = selEnd > selStart;
+    const scope      = hasSelection ? this.body.slice(selStart, selEnd) : this.body;
+
+    this.#setStatus(container, hasSelection ? 'Optimising selected images…' : 'Optimising images…', { spinner: true });
 
     // Match standard markdown images with absolute paths only
     const imgRe = /!\[([^\]]*)\]\((\/[^)\s]+\.(?:jpe?g|png|webp))\)/gi;
-    const matches = [...this.body.matchAll(imgRe)]
+    const matches = [...scope.matchAll(imgRe)]
       .filter(([, , src]) => !/-\d+w\.(?:jpe?g|png|gif|webp)$/i.test(src));
 
     if (!matches.length) {
@@ -446,7 +453,7 @@ export class EditorView {
       return;
     }
 
-    let content = this.body;
+    let content = scope;
     let count   = 0;
     const seen  = new Set();
 
@@ -520,10 +527,13 @@ export class EditorView {
     }
 
     if (count > 0) {
-      this.body          = content;
-      this.#textarea.value = content;
-      this.dirty         = true;
-      this.#refreshPreview(container, content);
+      const fullContent    = hasSelection
+        ? this.body.slice(0, selStart) + content + this.body.slice(selEnd)
+        : content;
+      this.body            = fullContent;
+      this.#textarea.value = fullContent;
+      this.dirty           = true;
+      this.#refreshPreview(container, fullContent);
       this.#setStatus(container, `${count} image${count !== 1 ? 's' : ''} optimised`);
       this.toast(`Optimised ${count} image${count !== 1 ? 's' : ''}. Review then publish.`, 'success');
     } else {
@@ -789,11 +799,13 @@ export class EditorView {
 
   // ── HTML preview ────────────────────────────────────────────────────────────
 
-  #updateHtmlPreview(container, html) {
+  async #updateHtmlPreview(container, html) {
     const frame = container.querySelector('#html-preview-frame');
     if (!frame) return;
     const rawBase = `https://raw.githubusercontent.com/${this.config.owner}/${this.config.repo}/${this.config.branch}`;
-    frame.srcdoc  = buildSafeHtmlPreview(html, rawBase);
+    const DOMPurify = await getPurify();
+    const clean = DOMPurify.sanitize(html, { WHOLE_DOCUMENT: true, FORCE_BODY: false });
+    frame.srcdoc = buildSafeHtmlPreview(clean, rawBase);
   }
 }
 
@@ -805,14 +817,8 @@ function escHtml(s) {
 
 function buildSafeHtmlPreview(content, rawBase) {
   let html = content
-    // Strip Liquid control tags {% %}
     .replace(/\{%-?[\s\S]*?-?%\}/g, '')
-    // Replace Liquid output {{ }} with a dim placeholder
-    .replace(/\{\{-?[\s\S]*?-?\}\}/g, '<span style="opacity:.35;font-style:italic">[dynamic]</span>')
-    // Remove script elements entirely
-    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
-    // Remove inline event handlers
-    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*')/gi, '');
+    .replace(/\{\{-?[\s\S]*?-?\}\}/g, '<span style="opacity:.35;font-style:italic">[dynamic]</span>');
 
   // Rewrite root-relative src/href/action to the raw GitHub URL
   html = html.replace(

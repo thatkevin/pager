@@ -120,6 +120,37 @@ The GitHub [device flow](https://docs.github.com/en/apps/oauth-apps/building-oau
 
 ---
 
+## Security headers
+
+Security headers (CSP, HSTS, etc.) are applied via a **Cloudflare Transform Rule** on the `kev.cc` zone. Free, no Worker quota consumed, zero processing overhead.
+
+### Setting up
+
+1. Cloudflare Dashboard → **`kev.cc` zone** → **Rules → Transform Rules → Modify Response Header**
+2. Create a rule:
+   - **Name:** `pager security headers`
+   - **When:** `Hostname equals pager.kev.cc`
+   - **Then:** Add each header below as a **Set** action
+
+| Header | Value |
+|--------|-------|
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://raw.githubusercontent.com https://avatars.githubusercontent.com; connect-src 'self' https://api.github.com https://raw.githubusercontent.com https://avatars.githubusercontent.com https://pager-auth.kevs.workers.dev; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests` |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains; preload` |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` |
+
+### Requirements
+
+- `pager.kev.cc` DNS record must be **proxied** (orange cloud) in Cloudflare. DNS-only bypasses Transform Rules entirely.
+
+### Alternative: Worker-based headers
+
+`worker-headers/` contains a Cloudflare Worker that does the same thing as a reverse proxy. Use this instead if you want the header config in version control and deployed via `wrangler deploy`. It will consume Worker request quota (free tier: 100k requests/day), so the Transform Rule is preferred for a low-traffic personal site.
+
+---
+
 ## Limitations
 
 - **No draft/publish state** — saving commits directly to the live branch

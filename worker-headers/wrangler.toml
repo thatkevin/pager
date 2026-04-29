@@ -1,0 +1,11 @@
+name               = "pager-headers"
+main               = "index.js"
+compatibility_date = "2024-09-23"
+
+# Binds this worker to pager.kev.cc.
+# Requires the kev.cc zone to be active in Cloudflare with the orange-cloud proxy enabled.
+[[routes]]
+pattern   = "pager.kev.cc/*"
+zone_name = "kev.cc"
+
+# Deployment: wrangler deploy (from the worker-headers/ directory)

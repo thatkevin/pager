@@ -58,7 +58,7 @@ export function dateToIso(date) {
 }
 
 export function filenameFromPage(fm, ext = 'html') {
-  const slug = (fm.title || 'page')
+  const slug = (fm?.title || 'page')
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
     .trim()
