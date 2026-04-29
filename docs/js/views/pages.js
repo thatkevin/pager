@@ -11,7 +11,7 @@ export class PagesView {
 
   render() {
     return `
-      <div class="posts-view">
+      <div class="pages-view">
         <div class="page-header">
           <h1>Pages</h1>
           <div class="actions">

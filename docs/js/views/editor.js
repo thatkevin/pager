@@ -73,6 +73,9 @@ export class EditorView {
 
         <details class="editor-meta-details" id="editor-meta-details">
           <summary class="editor-meta-summary">
+            <svg class="meta-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
             Options
             <span id="meta-summary-info" class="meta-summary-info"></span>
           </summary>
