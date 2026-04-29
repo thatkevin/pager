@@ -490,6 +490,35 @@ select {
 
 .empty-state p { color: var(--text-muted); }
 
+/* ── Navigation Editor ──────────────────────────────────── */
+.nav-editor-list {
+  padding: 20px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nav-editor-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.nav-editor-item .fields {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+}
+
+.nav-editor-item .actions {
+  display: flex;
+  gap: 4px;
+}
+
 /* ── Login screen ──────────────────────────────────────── */
 .login-screen {
   display: flex;

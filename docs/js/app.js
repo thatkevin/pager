@@ -6,6 +6,7 @@ import { PagesView }    from './views/pages.js';
 import { EditorView }   from './views/editor.js';
 import { MediaView }    from './views/media.js';
 import { SetupView }    from './views/setup.js';
+import { NavigationView } from './views/navigation.js';
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,10 @@ function renderView(container, route, params) {
       view = new MediaView(state.client, cfg, { toast });
       break;
 
+    case 'navigation':
+      view = new NavigationView(state.client, cfg, { toast });
+      break;
+
     default:
       container.innerHTML = '<div class="empty-state"><p>Not found.</p></div>';
       return;
@@ -263,6 +268,10 @@ function renderShell() {
               ${iconPages()}
               Pages
             </button>
+            <button class="nav-item" data-route="navigation">
+              ${iconMenu()}
+              Navigation
+            </button>
             <button class="nav-item" data-route="editor" data-new="1" data-filetype="html">
               ${iconNew()}
               New page
@@ -306,6 +315,10 @@ function renderShell() {
       <button class="mobile-nav-item" data-route="pages">
         ${iconPages()}
         <span>Pages</span>
+      </button>
+      <button class="mobile-nav-item" data-route="navigation">
+        ${iconMenu()}
+        <span>Nav</span>
       </button>
       <button class="mobile-nav-item" data-route="media">
         ${iconMedia()}
@@ -430,6 +443,12 @@ function iconNew() {
 function iconPages() {
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
     <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/>
+  </svg>`;
+}
+
+function iconMenu() {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
   </svg>`;
 }
 

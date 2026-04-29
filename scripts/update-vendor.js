@@ -12,6 +12,10 @@ const LIBRARIES = [
   {
     name: 'dompurify.js',
     url: 'https://esm.sh/dompurify@3.4.1/es2022/dompurify.bundle.mjs'
+  },
+  {
+    name: 'js-yaml.js',
+    url: 'https://esm.sh/js-yaml@4.1.0/es2022/js-yaml.bundle.mjs'
   }
 ];
 
