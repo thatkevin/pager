@@ -1,3 +1,5 @@
+import { deleteDraft, draftsByPath } from '../drafts.js';
+
 export class PagesView {
   constructor(client, config, { toast, onEdit, onNew }) {
     this.client = client;
@@ -54,6 +56,7 @@ export class PagesView {
 
     try {
       const files = await this.#fetchPageFiles();
+      const pathDraftMap = draftsByPath();
 
       loading.style.display = 'none';
 
@@ -62,33 +65,64 @@ export class PagesView {
         return;
       }
 
-      tbody.innerHTML = files.map(f => {
-        const ext   = f.name.split('.').pop();
-        const label = this.#displayName(f.name);
-        return `
-          <tr>
-            <td>
-              <div class="post-title">${label}</div>
-              <div class="post-date mono">${f.path}</div>
-            </td>
-            <td><span class="file-type-badge">${ext}</span></td>
-            <td>
-              <div class="post-actions">
-                <button class="btn btn-ghost btn-sm" data-path="${f.path}">Edit</button>
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join('');
+      tbody.innerHTML = '';
+      for (const f of files) {
+        const hasDraft = f.path in pathDraftMap;
+        const tr = this.#renderPageRow(f, hasDraft);
+        tbody.appendChild(tr);
 
-      table.style.display = '';
+        tr.addEventListener('click', e => {
+          if (e.target.closest('button')) return;
+          this.onEdit(f.path);
+        });
 
-      tbody.querySelectorAll('[data-path]').forEach(btn => {
-        btn.addEventListener('click', () => this.onEdit(btn.dataset.path));
-      });
+        tr.querySelector('.edit-btn').addEventListener('click', () => this.onEdit(f.path));
+        tr.querySelector('.delete-btn').addEventListener('click', e => {
+          e.stopPropagation();
+          this.#confirmDelete(f, tr, pathDraftMap[f.path]);
+        });
+      }
 
+      table.style.display = 'table';
     } catch (e) {
       loading.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
+    }
+  }
+
+  #renderPageRow(f, hasDraft) {
+    const tr    = document.createElement('tr');
+    const ext   = f.name.split('.').pop();
+    const label = this.#displayName(f.name);
+    
+    tr.innerHTML = `
+      <td>
+        <div class="post-title" style="display:flex;align-items:center;gap:8px">
+          ${escHtml(label)}
+          ${hasDraft ? '<span class="draft-badge">Draft</span>' : ''}
+        </div>
+        <div class="post-date mono">${escHtml(f.path)}</div>
+      </td>
+      <td><span class="file-type-badge">${escHtml(ext)}</span></td>
+      <td>
+        <div class="post-actions">
+          <button class="btn btn-sm btn-ghost edit-btn">Edit</button>
+          <button class="btn btn-sm btn-danger delete-btn">Delete</button>
+        </div>
+      </td>
+    `;
+    return tr;
+  }
+
+  async #confirmDelete(f, tr, draftId) {
+    if (!confirm(`Delete "${this.#displayName(f.name)}"? This cannot be undone.`)) return;
+    try {
+      const file = await this.client.getFile(f.path);
+      await this.client.deleteFile(f.path, file.sha, `Delete page: ${f.name}`);
+      if (draftId) deleteDraft(draftId);
+      tr.remove();
+      this.toast('Page deleted.', 'success');
+    } catch (e) {
+      this.toast(`Delete failed: ${e.message}`, 'error');
     }
   }
 
@@ -142,4 +176,8 @@ export class PagesView {
       .replace(/[-_]/g, ' ')
       .replace(/\b\w/g, c => c.toUpperCase()) || filename;
   }
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
