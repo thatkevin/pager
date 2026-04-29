@@ -125,7 +125,7 @@ export class PagesView {
       tasks.push(
         this.client.listDir('')
           .then(list => list
-            .filter(f => f.type === 'file' && /\.html?$/i.test(f.name))
+            .filter(f => f.type === 'file' && /\.(html?|md)$/i.test(f.name))
             .forEach(add)
           )
           .catch(() => {})

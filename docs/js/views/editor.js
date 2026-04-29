@@ -79,14 +79,12 @@ export class EditorView {
         </div>
 
         <div class="editor-body" id="editor-body" data-pane="md">
+          <div class="pane-tabs-mobile">
+            <button class="pane-tab active" data-pane="md">Write</button>
+            <button class="pane-tab" data-pane="preview">Preview</button>
+          </div>
           <div class="editor-textarea-wrap">
-            <div class="editor-pane-label">
-              ${label}
-              <div class="pane-tabs-mobile">
-                <button class="pane-tab active" data-pane="md">Write</button>
-                <button class="pane-tab" data-pane="preview">Preview</button>
-              </div>
-            </div>
+            <div class="editor-pane-label">${label}</div>
             <textarea class="editor-textarea" id="md-editor"
                       placeholder="Start writing…"
                       spellcheck="${this.#isHtmlFile ? 'false' : 'true'}"></textarea>
