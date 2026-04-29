@@ -174,11 +174,11 @@ export class EditorView {
       const fmToggle = container.querySelector('#fm-toggle-checkbox');
       if (fmToggle) {
         fmToggle.checked = this.useFrontmatter;
-        meta.style.display = this.useFrontmatter ? 'grid' : 'none';
+        this.#updateMetaVisibility(container);
         fmToggle.addEventListener('change', () => {
           this.useFrontmatter = fmToggle.checked;
           this.dirty = true;
-          meta.style.display = this.useFrontmatter ? 'grid' : 'none';
+          this.#updateMetaVisibility(container);
           this.#setStatus(container, 'Unsaved changes');
         });
       }
@@ -233,7 +233,6 @@ export class EditorView {
   // ── Form helpers ───────────────────────────────────────────────────────────
 
   #collectFm(container) {
-    if (!this.useFrontmatter) return null;
     if (this.#isHtmlFile || this.isPage) {
       return {
         title:       container.querySelector('#fm-title')?.value       || this.fm.title,
@@ -312,7 +311,7 @@ export class EditorView {
         ? `Update ${kind}: ${fm?.title || filename}`
         : `Add ${kind}: ${fm?.title || filename}`;
 
-      const content = buildPostContent(fm, this.body);
+      const content = buildPostContent(this.useFrontmatter ? fm : null, this.body);
       const res     = await this.client.writeFile(filePath, content, message, this.sha);
       this.sha   = res.content.sha;
       this.path  = filePath;
@@ -603,12 +602,12 @@ export class EditorView {
           <label>Layout</label>
           <select id="fm-layout">${layoutOpts}</select>
         </div>
-        <div class="field">
+        <div class="field field-permalink">
           <label>Permalink</label>
           <input type="text" id="fm-permalink" value="${escHtml(f.permalink || '')}" placeholder="/about/">
         </div>
       </div>
-      <div class="field">
+      <div class="field field-desc">
         <label>Description</label>
         <input type="text" id="fm-desc" value="${escHtml(f.description || '')}" placeholder="Short description">
       </div>
@@ -644,25 +643,25 @@ export class EditorView {
           <select id="fm-layout">${layoutOpts}</select>
         </div>
       </div>
-      <div class="field">
+      <div class="field field-categories">
         <label>Categories</label>
         <div class="tags-input-wrap" id="tags-wrap">
           ${tagHtml}
           <input class="tags-input" id="tags-input" placeholder="Add category…" spellcheck="false">
         </div>
       </div>
-      <div class="field">
+      <div class="field field-desc">
         <label>Description</label>
         <input type="text" id="fm-desc" value="${escHtml(f.description || '')}" placeholder="Short description">
       </div>
-      <div class="field">
+      <div class="field field-thumb">
         <label>Thumbnail</label>
         <div class="field-with-browse">
           <input type="text" id="fm-thumb" value="${escHtml(f.thumbnail || '')}" placeholder="/assets/images/photo.jpg">
           <button class="btn btn-sm btn-ghost media-pick-btn" data-target="fm-thumb">Browse</button>
         </div>
       </div>
-      <div class="field">
+      <div class="field field-image">
         <label>Image</label>
         <div class="field-with-browse">
           <input type="text" id="fm-image" value="${escHtml(f.image || '')}" placeholder="/assets/images/photo.jpg">
@@ -670,6 +669,21 @@ export class EditorView {
         </div>
       </div>
     `;
+  }
+
+  #updateMetaVisibility(container) {
+    const meta = container.querySelector('#editor-meta');
+    if (!meta) return;
+    const fields = meta.querySelectorAll('.field');
+    fields.forEach(f => {
+      const isTitle = f.classList.contains('field-title');
+      const isDate  = f.classList.contains('field-date');
+      if (this.useFrontmatter) {
+        f.style.display = '';
+      } else {
+        f.style.display = (isTitle || isDate) ? '' : 'none';
+      }
+    });
   }
 
   #bindMeta(container) {
