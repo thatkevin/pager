@@ -71,16 +71,22 @@ export class EditorView {
           </div>
         </div>
 
-        <div class="editor-meta" id="editor-meta">
-          <div class="loading-state" id="meta-loading" style="grid-column:1/-1">
-            <div class="spinner"></div>
-            <span>Loading…</span>
+        <details class="editor-meta-details" id="editor-meta-details">
+          <summary class="editor-meta-summary">
+            Options
+            <span id="meta-summary-info" class="meta-summary-info"></span>
+          </summary>
+          <div class="editor-meta" id="editor-meta">
+            <div class="loading-state" id="meta-loading" style="grid-column:1/-1">
+              <div class="spinner"></div>
+              <span>Loading…</span>
+            </div>
           </div>
-        </div>
+        </details>
 
         <div class="editor-body" id="editor-body" data-pane="md">
           <div class="pane-tabs-mobile">
-            <button class="pane-tab active" data-pane="md">Write</button>
+            <button class="pane-tab active" data-pane="md">${label}</button>
             <button class="pane-tab" data-pane="preview">Preview</button>
           </div>
           <div class="editor-textarea-wrap">
@@ -170,6 +176,12 @@ export class EditorView {
 
       meta.innerHTML = this.#metaFormHtml();
       this.#bindMeta(container);
+
+      // Open meta details by default on desktop, closed on mobile
+      const details = container.querySelector('#editor-meta-details');
+      if (details && window.innerWidth >= 768) {
+        details.open = true;
+      }
 
       const fmToggle = container.querySelector('#fm-toggle-checkbox');
       if (fmToggle) {

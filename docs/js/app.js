@@ -115,7 +115,7 @@ function signOut() {
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
-function navigate(route, params = {}) {
+function navigate(route, params = {}, { pushState = true } = {}) {
   // Guard: require repo config for content routes
   if (route !== 'setup' && !state.repoConfig) {
     route  = 'setup';
@@ -125,6 +125,10 @@ function navigate(route, params = {}) {
   state.route  = route;
   state.params = params;
 
+  if (pushState) {
+    updateHash(route, params);
+  }
+
   document.querySelectorAll('.nav-item, .mobile-nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.route === route);
   });
@@ -132,6 +136,41 @@ function navigate(route, params = {}) {
   const main = document.getElementById('main');
   renderView(main, route, params);
 }
+
+function updateHash(route, params) {
+  const parts = [route];
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== null && v !== undefined) {
+      parts.push(`${k}=${encodeURIComponent(v)}`);
+    }
+  }
+  const hash = '#' + parts.join('/');
+  if (location.hash !== hash) {
+    history.pushState(null, '', hash);
+  }
+}
+
+function parseHash() {
+  const hash = location.hash.slice(1); // remove #
+  if (!hash) return { route: 'posts', params: {} };
+
+  const [route, ...paramParts] = hash.split('/');
+  const params = {};
+  for (const p of paramParts) {
+    const [k, v] = p.split('=');
+    if (k && v !== undefined) {
+      params[k] = decodeURIComponent(v);
+    }
+  }
+  return { route, params };
+}
+
+window.addEventListener('hashchange', () => {
+  const { route, params } = parseHash();
+  if (route !== state.route || JSON.stringify(params) !== JSON.stringify(state.params)) {
+    navigate(route, params, { pushState: false });
+  }
+});
 
 function renderView(container, route, params) {
   const cfg = getViewConfig();
@@ -392,6 +431,8 @@ async function boot() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       await authenticate(data.token);
+      const { route, params } = parseHash();
+      navigate(route, params, { pushState: false });
       return;
     } catch (e) {
       renderLogin();
@@ -414,6 +455,8 @@ async function boot() {
 
     try {
       await authenticate(stored);
+      const { route, params } = parseHash();
+      navigate(route, params, { pushState: false });
       return;
     } catch {
       localStorage.removeItem(TOKEN_KEY);
