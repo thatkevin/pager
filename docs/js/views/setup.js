@@ -67,13 +67,13 @@ function parseConfigYml(text) {
 }
 
 export class SetupView {
-  constructor(client, config, { toast, onDone, initialValues = null, lastRepo = null }) {
+  constructor(client, config, { toast, onDone, initialValues = null, recentRepos = [] }) {
     this.client        = client;
     this.config        = config;
     this.toast         = toast;
     this.onDone        = onDone;
     this.initialValues = initialValues;
-    this.lastRepo      = lastRepo;
+    this.recentRepos   = recentRepos;
     this.repos         = [];
     this.selected      = null;
     this._el           = null;
@@ -195,18 +195,22 @@ export class SetupView {
           merged.push(r);
         }
       }
-      merged.sort((a, b) => a.full_name.localeCompare(b.full_name));
+      
+      // Sort: Recents first (in order of recency), then alphabetical
+      merged.sort((a, b) => {
+        const idxA = this.recentRepos.indexOf(a.full_name);
+        const idxB = this.recentRepos.indexOf(b.full_name);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.full_name.localeCompare(b.full_name);
+      });
+      
       this.repos = merged;
     } catch {
       this.repos = [];
     }
     this._renderList('');
-
-    // Auto-select the last-used repo when opening setup fresh
-    if (!this.initialValues && this.lastRepo) {
-      const match = this.repos.find(r => r.full_name === this.lastRepo);
-      if (match) this._select(match.full_name, match.default_branch ?? 'main');
-    }
   }
 
   _renderList(filter) {
@@ -220,14 +224,19 @@ export class SetupView {
       return;
     }
 
-    listEl.innerHTML = hits.map(r => `
-      <button class="repo-item${this.selected?.full_name === r.full_name ? ' active' : ''}"
-              data-name="${r.full_name}"
-              data-branch="${r.default_branch ?? 'main'}">
-        <span class="repo-item-name">${r.full_name}</span>
-        ${r.private ? '<span class="repo-item-badge">private</span>' : ''}
-      </button>
-    `).join('');
+    listEl.innerHTML = hits.map(r => {
+      const isRecent = this.recentRepos.includes(r.full_name);
+      return `
+        <button class="repo-item${this.selected?.full_name === r.full_name ? ' active' : ''}"
+                data-name="${r.full_name}"
+                data-branch="${r.default_branch ?? 'main'}">
+          <span class="repo-item-name">
+            ${isRecent ? '<span class="repo-item-recent-star">★</span> ' : ''}${r.full_name}
+          </span>
+          ${r.private ? '<span class="repo-item-badge">private</span>' : ''}
+        </button>
+      `;
+    }).join('');
 
     listEl.querySelectorAll('.repo-item').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -273,18 +282,26 @@ export class SetupView {
       const cfg       = JSON.parse(pagerFile.content);
       this._pagerCmsSha = pagerFile.sha;
 
-      if (cfg.branch) this._el.querySelector('#setup-branch').value = cfg.branch;
-      this._el.querySelector('#setup-posts-path').value    = cfg.postsPath    ?? '';
-      this._el.querySelector('#setup-pages-path').value    = cfg.pagesPath    ?? '';
-      this._el.querySelector('#setup-media-path').value    = cfg.mediaPath    ?? '';
-      this._el.querySelector('#setup-layouts').value       = Array.isArray(cfg.layouts) ? cfg.layouts.join(', ') : '';
-      this._el.querySelector('#setup-max-img-width').value = cfg.maxImageWidth ?? '';
-      this._el.querySelector('#setup-save-pager').checked  = true;
-      this._el.querySelector('#setup-pager-source').style.display = 'inline';
+      const branch = cfg.branch ?? defaultBranch;
+      const postsPath = cfg.postsPath ?? '';
+      const pagesPath = cfg.pagesPath ?? '';
+      const mediaPath = cfg.mediaPath ?? '';
+      const layouts = Array.isArray(cfg.layouts) ? cfg.layouts : ['post', 'page', 'default'];
+      const maxImageWidth = cfg.maxImageWidth ?? null;
+
+      // Update form just in case user wants to see it, though we auto-confirm
+      this._el.querySelector('#setup-branch').value = branch;
+      this._el.querySelector('#setup-posts-path').value = postsPath;
+      this._el.querySelector('#setup-pages-path').value = pagesPath;
+      this._el.querySelector('#setup-media-path').value = mediaPath;
+      this._el.querySelector('#setup-layouts').value    = layouts.join(', ');
+      this._el.querySelector('#setup-max-img-width').value = maxImageWidth ?? '';
 
       detectingEl.style.display = 'none';
-      this._el.querySelector('#setup-confirm-btn').disabled = false;
-      configPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      this.toast(`Using configuration from .pagercms`, 'info');
+      
+      // Auto-confirm if we found a valid .pagercms
+      this.onDone({ owner, repo, branch, postsPath, pagesPath, mediaPath, layouts, maxImageWidth });
       return;
     } catch {
       this._pagerCmsSha = null;
